@@ -1,0 +1,65 @@
+# Halo
+
+连接大屏的本地信息墙。默认杭州天气，以 16 个模块展示生活、团队安排和个人关注：LivLiv 助手、当前天气、三日预报、今日日程、近期安排、热点／国际／财经／文娱／体育／生活新闻、世界时钟、倒计时、便签、常用链接与一个技术项目。
+
+## 在 Mac mini 上开始
+
+1. 安装 Node.js 22 或更高版本（[官网](https://nodejs.org/)），解压后双击 Start-Mac.command，或在终端执行 bash Start-Mac.command。
+2. 打开 [Halo](http://127.0.0.1:4317)，点击顶部全屏按钮。交付包包含字体、背景、识别模型、LivLiv 播放器与 4 个角色素材。
+3. 每张卡片右上角的“···”可以编辑关注内容，顶部“模块设置”可集中选择卡片。15 张内容卡片都能更换类型、标题与配置；助手卡片可切换角色。
+4. 点击“体验示例简报”，确认姓名后进入个人屏。个人模块配置和日程独立保存；新成员首次打开时继承公共屏的模块布局，日程保持空白。返回团队晨报即可退出。
+
+## 设置关注内容
+
+- 天气／预报：默认杭州，可改城市。天气来自 [wttr.in](https://github.com/chubin/wttr.in)，每 30 分钟检查。未知或不可达城市显示读取失败，不生成模拟温度。
+- 新闻：来自 [中国新闻网 RSS](https://www.chinanews.com.cn/rss/)，可选即时、国际、财经、文化文娱、体育、生活、社会；每 15 分钟检查。关键词以逗号分隔，命中任意一个即显示；留空显示全部。保留原标题、发布时间和原文链接。“热点”是即时新闻订阅，并非社交平台热搜排名。
+- 日程：卡片下方“管理日程”可添加标题、起止时间与地点，也可导入小于 450 KB 的 ICS 文件。支持未来 90 天的重复日程、排除日期、时区和全天事项；最多保留 500 条。日程模块可筛选今天／未来七天以及关键词。导入只是本机副本，不会修改或持续同步原日历；未填写时显示空白安排。
+- 便签：每行一条关注事项。
+- 世界时钟：选择中国、东京、新加坡、伦敦、纽约或洛杉矶。
+- 倒计时：周末或指定日期。
+- 常用链接：每行“名称 | http/https 地址”，最多 8 条。
+- 技术项目：填写公开 GitHub owner/repo。成员与订阅中仍保留原有项目订阅及每日额外发现。
+
+设置、日程和抓取缓存保存在本机的 modules.json；原项目订阅在 wall.json。后台每分钟检查到期来源，断网保留上次成功记录并标注缓存状态，失败后 5 分钟重试。点击“立即整理”可手动检查来源，频率限制为每分钟一次。电脑关机或睡眠期间不能抓取，恢复运行后补查。
+
+## LivLiv 集成
+
+已将本地 player 项目的核心播放器与角色画廊集成到 public/vendor/livliv，运行时不依赖 4173 端口。打开 [内置画廊](http://127.0.0.1:4317/vendor/livliv/example/gallery.html) 可以浏览角色和表情。
+
+助手支持 Leo、Sena、Elio、Hana 四个角色，眨眼、呼吸、鼠标跟随、点头与表情切换。顶部动效开关同时控制背景和角色；首次跟随系统“减少动态效果”。弹窗开启或页面隐藏时暂停。WebGL2 不可用时显示角色静态预览。不会为角色自动开启摄像头或麦克风。
+
+桌面端人物独占左侧整栏，右侧以三列五行展示 15 个信息模块。主屏不绘制 LivLiv 品牌叠层，来源署名保留在角色设置中。本地播放器增加 `Player.showMark` 开关（默认开启，主屏关闭），修改说明见 `public/vendor/livliv/NOTICE`；角色素材与元数据保持原样。
+
+角色：LivLiv（livliv.ai）。代码采用 Apache-2.0，见 vendor/livliv/LICENSE；角色独立许可见 vendor/livliv/characters/LICENSE.md 和 CREDITS.md。当前用于本地原型与演示；公司或组织用于广告、推广、收费产品等商业场景，需要取得角色授权。Nana 吉祥物与来源授权不同的角色未打入本交付包。
+
+## 成员与走近识别
+
+“成员与订阅”中添加成员、设置公开项目订阅，然后由成员本人点击“录入本人”和“本人同意并开始录入”，授权摄像头并独自正对镜头采集三次。走近时先弹出姓名，点确认后显示个人简报。失去匹配约 10 秒、多张脸或识别到其他成员时返回公共屏；手动模式 90 秒无操作后返回。
+
+面部特征只保存在当前浏览器本地，视频和特征不上传。录入、使用、清除须在同一台大屏和同一浏览器完成。共享展示中的手动成员选择不提供账户级访问控制。日程和关注内容应适合在公共屏幕上展示。
+
+## 日常运行与开发
+
+Mac 启动器安装用户登录后运行的后台服务，关闭浏览器也会整理数据。运行文件、数据与日志在 ~/Library/Application Support/MorningBrief/。暂停或恢复服务：
+
+```bash
+launchctl bootout "gui/$(id -u)/local.morningbrief.wall"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/local.morningbrief.wall.plist"
+```
+
+源码运行：
+
+```sh
+npm ci
+npm test
+npm start
+```
+
+浏览器回归：npm run test:browser。可设置 PORT、BRIEF_DATA 更改端口与数据目录；BRIEF_OFFLINE=1 用于关闭多类型模块的测试网络抓取。服务只监听本机回环地址。
+
+## 设计与素材
+
+布局参考 [DAKboard](https://dakboard.com/site)、[MagicMirror](https://magicmirror.builders/)，控制层材质参考 [Apple Materials](https://developer.apple.com/design/human-interface-guidelines/materials)。
+
+背景为 Nunzio Guerrera 的 [Scenic View of a Mountain Lake at Dusk](https://www.pexels.com/photo/scenic-view-of-a-mountain-lake-at-dusk-20219915/)，按 [Pexels License](https://www.pexels.com/license/) 使用。Barlow 字体许可证见 LICENSE-Barlow.txt。背景、字体和角色均随包提供；新天气、新闻和项目发布需要联网。
+

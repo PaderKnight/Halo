@@ -1,0 +1,454 @@
+{
+  "ollama/ollama": {
+    "item": {
+      "title": "v0.40.17",
+      "tag": "v0.40.17",
+      "prerelease": false,
+      "publishedAt": "2026-11-10T22:25:00Z",
+      "detail": "Inkling 2 Mini from Thinking Machines is a 26B parameter model with 5.4B active.",
+      "url": "https://github.com/ollama/ollama/releases/tag/v0.40.17",
+      "headline": "Ollama 支持 Inkling 2 Mini 多模态模型",
+      "detailZh": "在 Apple 芯片 Mac 上用约 20 GB 运行，支持图像、文本和工具调用。"
+    },
+    "history": [
+      {
+        "title": "v0.40.17",
+        "tag": "v0.40.17",
+        "prerelease": false,
+        "publishedAt": "2026-11-10T22:25:00Z",
+        "detail": "Inkling 2 Mini from Thinking Machines is a 26B parameter model with 5.4B active.",
+        "url": "https://github.com/ollama/ollama/releases/tag/v0.40.17",
+        "headline": "Ollama 支持 Inkling 2 Mini 多模态模型",
+        "detailZh": "在 Apple 芯片 Mac 上用约 20 GB 运行，支持图像、文本和工具调用。"
+      },
+      {
+        "title": "v0.40.16",
+        "tag": "v0.40.16",
+        "prerelease": false,
+        "publishedAt": "2026-11-09T18:21:19Z",
+        "detail": "Ripple Preview from Ricursive Intelligence is a 65B dense model built for agentic coding.",
+        "url": "https://github.com/ollama/ollama/releases/tag/v0.40.16"
+      },
+      {
+        "title": "v0.40.15",
+        "tag": "v0.40.15",
+        "prerelease": false,
+        "publishedAt": "2026-11-03T22:52:31Z",
+        "detail": "Xiaomi MiMo's mimo-v2.6, a 9B model built for code and agent workflows, is now supported in Ollama.",
+        "url": "https://github.com/ollama/ollama/releases/tag/v0.40.15"
+      },
+      {
+        "title": "v0.40.14",
+        "tag": "v0.40.14",
+        "prerelease": false,
+        "publishedAt": "2026-11-03T01:40:40Z",
+        "detail": "ollama launch claude now applies the model's output token limit for Claude Code, so cloud models no longer run into the 128k default cap",
+        "url": "https://github.com/ollama/ollama/releases/tag/v0.40.14"
+      },
+      {
+        "title": "v0.40.13",
+        "tag": "v0.40.13",
+        "prerelease": false,
+        "publishedAt": "2026-10-28T19:55:04Z",
+        "detail": "Liquid AI's LFM3 models, including text-to-speech in lfm3-audio and lfm3-omni, now run on Linux and Windows as well as Apple silicon.",
+        "url": "https://github.com/ollama/ollama/releases/tag/v0.40.13"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:20.669Z"
+  },
+  "ggml-org/llama.cpp": {
+    "item": {
+      "title": "b12628",
+      "tag": "b12628",
+      "prerelease": true,
+      "publishedAt": "2026-11-22T06:53:42Z",
+      "detail": "vulkan : support non-contiguous src in SCALE (#32735)",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/tag/b12628",
+      "headline": "llama.cpp 更新 Vulkan 缩放运算",
+      "detailZh": "Vulkan 后端的 SCALE 运算现在支持内存不连续的输入。"
+    },
+    "history": [
+      {
+        "title": "b12628",
+        "tag": "b12628",
+        "prerelease": true,
+        "publishedAt": "2026-11-22T06:53:42Z",
+        "detail": "vulkan : support non-contiguous src in SCALE (#32735)",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/tag/b12628",
+        "headline": "llama.cpp 更新 Vulkan 缩放运算",
+        "detailZh": "Vulkan 后端的 SCALE 运算现在支持内存不连续的输入。"
+      },
+      {
+        "title": "b12627",
+        "tag": "b12627",
+        "prerelease": true,
+        "publishedAt": "2026-11-22T03:51:24Z",
+        "detail": "server : fit non-causal batches in one ubatch (#32713)",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/tag/b12627"
+      },
+      {
+        "title": "b12626",
+        "tag": "b12626",
+        "prerelease": true,
+        "publishedAt": "2026-11-22T02:20:06Z",
+        "detail": "vulkan : fix memset for unaligned ranges for non-UMA devices (#32725)",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/tag/b12626"
+      },
+      {
+        "title": "b12625",
+        "tag": "b12625",
+        "prerelease": true,
+        "publishedAt": "2026-11-22T02:01:35Z",
+        "detail": "model: fix norealloc for clef and vllm-decision2 (#32754)",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/tag/b12625"
+      },
+      {
+        "title": "b12624",
+        "tag": "b12624",
+        "prerelease": true,
+        "publishedAt": "2026-11-22T01:47:52Z",
+        "detail": "chat : pass reasoningeffort = none if supported (#32763)",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/tag/b12624"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:23.616Z"
+  },
+  "ml-explore/mlx": {
+    "item": {
+      "title": "v0.32.4",
+      "tag": "v0.32.4",
+      "prerelease": false,
+      "publishedAt": "2026-10-14T23:37:14Z",
+      "detail": "Adding VJP for the scaled dot product attention.",
+      "url": "https://github.com/ml-explore/mlx/releases/tag/v0.32.4",
+      "headline": "MLX 新增 Python 3.15 支持",
+      "detailZh": "同步支持 Python 3.15t，并补充缩放点积注意力的梯度运算。"
+    },
+    "history": [
+      {
+        "title": "v0.32.4",
+        "tag": "v0.32.4",
+        "prerelease": false,
+        "publishedAt": "2026-10-14T23:37:14Z",
+        "detail": "Adding VJP for the scaled dot product attention.",
+        "url": "https://github.com/ml-explore/mlx/releases/tag/v0.32.4",
+        "headline": "MLX 新增 Python 3.15 支持",
+        "detailZh": "同步支持 Python 3.15t，并补充缩放点积注意力的梯度运算。"
+      },
+      {
+        "title": "v0.32.3",
+        "tag": "v0.32.3",
+        "prerelease": false,
+        "publishedAt": "2026-09-29T00:37:42Z",
+        "detail": "Fix scan and sort for a zero-size axis",
+        "url": "https://github.com/ml-explore/mlx/releases/tag/v0.32.3"
+      },
+      {
+        "title": "v0.32.2",
+        "tag": "v0.32.2",
+        "prerelease": false,
+        "publishedAt": "2026-08-25T10:58:55Z",
+        "detail": "Preserve subnormal float values when casting to bool",
+        "url": "https://github.com/ml-explore/mlx/releases/tag/v0.32.2"
+      },
+      {
+        "title": "v0.32.1",
+        "tag": "v0.32.1",
+        "prerelease": false,
+        "publishedAt": "2026-08-18T03:45:01Z",
+        "detail": "Fix int64 type cast error when loading GGUF metadata arrays",
+        "url": "https://github.com/ml-explore/mlx/releases/tag/v0.32.1"
+      },
+      {
+        "title": "v0.32.0",
+        "tag": "v0.32.0",
+        "prerelease": false,
+        "publishedAt": "2026-07-07T22:29:13Z",
+        "detail": "Generate qmm implementaions with cmake",
+        "url": "https://github.com/ml-explore/mlx/releases/tag/v0.32.0"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:25.011Z"
+  },
+  "ml-explore/mlx-swift": {
+    "item": {
+      "title": "0.33.0",
+      "tag": "0.33.0",
+      "prerelease": false,
+      "publishedAt": "2026-10-27T22:49:04Z",
+      "detail": "new mlx release:",
+      "url": "https://github.com/ml-explore/mlx-swift/releases/tag/0.33.0",
+      "headline": "MLX Swift 调整编译闭包的并发约束",
+      "detailZh": "compile() 要求传入的闭包符合 @Sendable，并调整了返回类型。"
+    },
+    "history": [
+      {
+        "title": "0.33.0",
+        "tag": "0.33.0",
+        "prerelease": false,
+        "publishedAt": "2026-10-27T22:49:04Z",
+        "detail": "new mlx release:",
+        "url": "https://github.com/ml-explore/mlx-swift/releases/tag/0.33.0",
+        "headline": "MLX Swift 调整编译闭包的并发约束",
+        "detailZh": "compile() 要求传入的闭包符合 @Sendable，并调整了返回类型。"
+      },
+      {
+        "title": "0.32.3",
+        "tag": "0.32.3",
+        "prerelease": false,
+        "publishedAt": "2026-09-30T18:20:13Z",
+        "detail": "Patch release for #491 / #493 -- applications linking to mlx-swift would crash on launch on macOS/iOS earlier than 26.4 (SDK issue).",
+        "url": "https://github.com/ml-explore/mlx-swift/releases/tag/0.32.3"
+      },
+      {
+        "title": "0.32.2",
+        "tag": "0.32.2",
+        "prerelease": false,
+        "publishedAt": "2026-09-28T18:21:07Z",
+        "detail": "Use release 0.32.3 -- important patch for #491",
+        "url": "https://github.com/ml-explore/mlx-swift/releases/tag/0.32.2"
+      },
+      {
+        "title": "0.31.6",
+        "tag": "0.31.6",
+        "prerelease": false,
+        "publishedAt": "2026-07-02T01:30:21Z",
+        "detail": "Fixes build issue on iOS.",
+        "url": "https://github.com/ml-explore/mlx-swift/releases/tag/0.31.6"
+      },
+      {
+        "title": "0.31.5",
+        "tag": "0.31.5",
+        "prerelease": false,
+        "publishedAt": "2026-06-30T17:33:53Z",
+        "detail": "For SwiftPM users, the swift-tools-version changes to 6.3.  There are no changes in SDK requirements, but this may require a newer Xcode to build.",
+        "url": "https://github.com/ml-explore/mlx-swift/releases/tag/0.31.5"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:26.175Z"
+  },
+  "ggml-org/whisper.cpp": {
+    "item": {
+      "title": "b5907",
+      "tag": "b5907",
+      "prerelease": true,
+      "publishedAt": "2026-11-20T15:48:53Z",
+      "detail": "",
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/tag/b5907"
+    },
+    "history": [
+      {
+        "title": "b5907",
+        "tag": "b5907",
+        "prerelease": true,
+        "publishedAt": "2026-11-20T15:48:53Z",
+        "detail": "",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/tag/b5907"
+      },
+      {
+        "title": "v1.9.5",
+        "tag": "v1.9.5",
+        "prerelease": false,
+        "publishedAt": "2026-10-06T17:39:17Z",
+        "detail": "Maintenance release. Updates to ggml v0.26.0.",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.5"
+      },
+      {
+        "title": "b5454",
+        "tag": "b5454",
+        "prerelease": true,
+        "publishedAt": "2026-10-06T16:51:27Z",
+        "detail": "",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/tag/b5454"
+      },
+      {
+        "title": "v1.9.4",
+        "tag": "v1.9.4",
+        "prerelease": false,
+        "publishedAt": "2026-09-11T05:31:55Z",
+        "detail": "New version has been released.",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.4"
+      },
+      {
+        "title": "b5130",
+        "tag": "b5130",
+        "prerelease": true,
+        "publishedAt": "2026-09-11T05:29:10Z",
+        "detail": "",
+        "url": "https://github.com/ggml-org/whisper.cpp/releases/tag/b5130"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:27.413Z"
+  },
+  "vitejs/vite": {
+    "item": {
+      "title": "v8.4.0-beta.1",
+      "tag": "v8.4.0-beta.1",
+      "prerelease": true,
+      "publishedAt": "2026-11-16T07:18:47Z",
+      "detail": "add environment.addSafeModule (#23974) (e0fe98a)",
+      "url": "https://github.com/vitejs/vite/releases/tag/v8.4.0-beta.1",
+      "headline": "Vite 增加开发服务器文件访问选项",
+      "detailZh": "本次测试版加入 server.fs.strict 的 extended 模式，构建清单也会包含 Worker 代码块。"
+    },
+    "history": [
+      {
+        "title": "v8.4.0-beta.1",
+        "tag": "v8.4.0-beta.1",
+        "prerelease": true,
+        "publishedAt": "2026-11-16T07:18:47Z",
+        "detail": "add environment.addSafeModule (#23974) (e0fe98a)",
+        "url": "https://github.com/vitejs/vite/releases/tag/v8.4.0-beta.1",
+        "headline": "Vite 增加开发服务器文件访问选项",
+        "detailZh": "本次测试版加入 server.fs.strict 的 extended 模式，构建清单也会包含 Worker 代码块。"
+      },
+      {
+        "title": "v8.3.8",
+        "tag": "v8.3.8",
+        "prerelease": false,
+        "publishedAt": "2026-11-11T02:46:37Z",
+        "detail": "build: keep magicString and ast in transform hook meta (#24012) (a3b28e8)",
+        "url": "https://github.com/vitejs/vite/releases/tag/v8.3.8"
+      },
+      {
+        "title": "v8.2.6",
+        "tag": "v8.2.6",
+        "prerelease": false,
+        "publishedAt": "2026-11-09T10:57:55Z",
+        "detail": "Please refer to CHANGELOG.md for details.",
+        "url": "https://github.com/vitejs/vite/releases/tag/v8.2.6"
+      },
+      {
+        "title": "v8.2.5",
+        "tag": "v8.2.5",
+        "prerelease": false,
+        "publishedAt": "2026-11-09T10:57:45Z",
+        "detail": "Please refer to CHANGELOG.md for details.",
+        "url": "https://github.com/vitejs/vite/releases/tag/v8.2.5"
+      },
+      {
+        "title": "v8.3.7",
+        "tag": "v8.3.7",
+        "prerelease": false,
+        "publishedAt": "2026-11-09T10:23:22Z",
+        "detail": "deps: update Rolldown to v1.2.18 (#24038) (517affb)",
+        "url": "https://github.com/vitejs/vite/releases/tag/v8.3.7"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:28.523Z"
+  },
+  "sveltejs/svelte": {
+    "item": {
+      "title": "svelte@5.59.1",
+      "tag": "svelte@5.59.1",
+      "prerelease": false,
+      "publishedAt": "2026-11-20T19:03:36Z",
+      "detail": "fix: keep hydrate and mount type parameters in sync so a union of them is callable (#19357)",
+      "url": "https://github.com/sveltejs/svelte/releases/tag/svelte%405.59.1",
+      "headline": "Svelte 修复挂载与水合的类型兼容问题",
+      "detailZh": "hydrate 与 mount 的类型参数现在保持一致，方便在同一处调用。"
+    },
+    "history": [
+      {
+        "title": "svelte@5.59.1",
+        "tag": "svelte@5.59.1",
+        "prerelease": false,
+        "publishedAt": "2026-11-20T19:03:36Z",
+        "detail": "fix: keep hydrate and mount type parameters in sync so a union of them is callable (#19357)",
+        "url": "https://github.com/sveltejs/svelte/releases/tag/svelte%405.59.1",
+        "headline": "Svelte 修复挂载与水合的类型兼容问题",
+        "detailZh": "hydrate 与 mount 的类型参数现在保持一致，方便在同一处调用。"
+      },
+      {
+        "title": "svelte@5.59.0",
+        "tag": "svelte@5.59.0",
+        "prerelease": false,
+        "publishedAt": "2026-11-20T14:28:21Z",
+        "detail": "feat: custom renderer api (#18042)",
+        "url": "https://github.com/sveltejs/svelte/releases/tag/svelte%405.59.0"
+      },
+      {
+        "title": "svelte@5.58.1",
+        "tag": "svelte@5.58.1",
+        "prerelease": false,
+        "publishedAt": "2026-11-20T11:16:02Z",
+        "detail": "fix: don't throw when committing a fork whose changes were all superseded by other updates (#19030)",
+        "url": "https://github.com/sveltejs/svelte/releases/tag/svelte%405.58.1"
+      },
+      {
+        "title": "svelte@5.58.0",
+        "tag": "svelte@5.58.0",
+        "prerelease": false,
+        "publishedAt": "2026-11-18T06:54:03Z",
+        "detail": "feat: include snippetName in render entries of the dev sveltemeta stack (#19283)",
+        "url": "https://github.com/sveltejs/svelte/releases/tag/svelte%405.58.0"
+      },
+      {
+        "title": "svelte@5.57.3",
+        "tag": "svelte@5.57.3",
+        "prerelease": false,
+        "publishedAt": "2026-10-26T18:15:06Z",
+        "detail": "fix: use the first valid fallback role in role for a11y checks (#19045)",
+        "url": "https://github.com/sveltejs/svelte/releases/tag/svelte%405.57.3"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:29.004Z"
+  },
+  "vuejs/core": {
+    "item": {
+      "title": "v3.6.0-rc.16",
+      "tag": "v3.6.0-rc.16",
+      "prerelease": true,
+      "publishedAt": "2026-11-20T09:54:15Z",
+      "detail": "For stable releases, please refer to CHANGELOG.md for details.",
+      "url": "https://github.com/vuejs/core/releases/tag/v3.6.0-rc.16",
+      "headline": "Vue 3.6 发布第 16 个候选版本",
+      "detailZh": "该版本的变更记录收录在 minor 分支的 CHANGELOG 中。"
+    },
+    "history": [
+      {
+        "title": "v3.6.0-rc.16",
+        "tag": "v3.6.0-rc.16",
+        "prerelease": true,
+        "publishedAt": "2026-11-20T09:54:15Z",
+        "detail": "For stable releases, please refer to CHANGELOG.md for details.",
+        "url": "https://github.com/vuejs/core/releases/tag/v3.6.0-rc.16",
+        "headline": "Vue 3.6 发布第 16 个候选版本",
+        "detailZh": "该版本的变更记录收录在 minor 分支的 CHANGELOG 中。"
+      },
+      {
+        "title": "v3.5.46",
+        "tag": "v3.5.46",
+        "prerelease": false,
+        "publishedAt": "2026-11-20T08:18:41Z",
+        "detail": "For stable releases, please refer to CHANGELOG.md for details.",
+        "url": "https://github.com/vuejs/core/releases/tag/v3.5.46"
+      },
+      {
+        "title": "v3.6.0-rc.15",
+        "tag": "v3.6.0-rc.15",
+        "prerelease": true,
+        "publishedAt": "2026-11-12T08:50:28Z",
+        "detail": "For stable releases, please refer to CHANGELOG.md for details.",
+        "url": "https://github.com/vuejs/core/releases/tag/v3.6.0-rc.15"
+      },
+      {
+        "title": "v3.5.45",
+        "tag": "v3.5.45",
+        "prerelease": false,
+        "publishedAt": "2026-11-05T09:15:06Z",
+        "detail": "For stable releases, please refer to CHANGELOG.md for details.",
+        "url": "https://github.com/vuejs/core/releases/tag/v3.5.45"
+      },
+      {
+        "title": "v3.6.0-rc.14",
+        "tag": "v3.6.0-rc.14",
+        "prerelease": true,
+        "publishedAt": "2026-10-30T08:01:40Z",
+        "detail": "For stable releases, please refer to CHANGELOG.md for details.",
+        "url": "https://github.com/vuejs/core/releases/tag/v3.6.0-rc.14"
+      }
+    ],
+    "checkedAt": "2026-11-22T08:07:29.547Z"
+  }
+}

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#18273c"><title>Halo · 团队简报</title>
+  <link rel="icon" href="data:,"><link rel="stylesheet" href="/wall.css"><link rel="stylesheet" href="/scene.css"><link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+<div class="waterlight" aria-hidden="true"></div>
+<header class="mast wrap">
+  <a class="brand" href="/" aria-label="Halo 首页">
+    <svg class="brand-wordmark" viewBox="0 0 132 46" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 6V40M30 6V40M6 23H30" stroke-width="9"/>
+      <g stroke-width="6.5">
+        <circle cx="57" cy="28" r="12"/>
+        <path d="M69 16V40M84 6V40"/>
+        <circle cx="111" cy="28" r="12"/>
+      </g>
+    </svg>
+  </a>
+  <div class="timeblock" aria-label="当前时间"><time id="clock"></time><span id="day"></span></div>
+  <div class="tools">
+    <button id="motion" class="quiet" aria-label="大屏动效" aria-pressed="false"><i class="play-symbol" aria-hidden="true"></i><span class="motion-label">动效</span></button>
+    <button id="full" class="quiet" aria-label="进入全屏" title="进入全屏">全屏</button>
+    <button id="modules-settings" class="quiet">模块设置</button>
+    <button id="settings" class="quiet">成员与订阅</button>
+  </div>
+</header>
+<main class="wrap">
+  <section class="welcome" aria-label="今日概览">
+    <div class="page-title"><h1 id="title">团队晨报</h1><span id="feed-count">天气、新闻、日程与你关注的生活</span></div>
+    <div id="facts" class="facts"></div>
+  </section>
+  <div class="workspace">
+    <section class="member-zone module" data-module="assistant" aria-label="个人简报入口">
+      <div class="widget-heading"><span class="type-dot assistant" aria-hidden="true"></span><h2>简报助手</h2><button class="module-config" id="character-settings" aria-label="设置简报助手" title="设置角色">···</button></div>
+      <div class="assistant-layout">
+        <div class="avatar-view"><img id="avatar-cover" alt="" src="/vendor/livliv/characters/d02/cover.webp"><canvas id="avatar" aria-label="动态简报助手"></canvas></div>
+        <aside class="side" id="side" aria-label="成员简报"></aside>
+      </div>
+      <div class="avatar-controls"><span id="avatar-status">载入中</span><button id="avatar-greet" class="textbtn">点头</button><button id="avatar-expression" class="textbtn">换表情</button><a href="/vendor/livliv/example/gallery.html" target="_blank" rel="noopener">角色画廊 ↗</a></div>
+    </section>
+    <div id="tiles" aria-live="polite">正在整理你的信息墙…</div>
+  </div>
+  <footer><div class="foot-status"><span class="robot"><i></i><span id="robot-text">正在连接</span></span><span id="sync-time">等待首次整理</span></div><button id="sync" class="linkbtn">立即整理</button></footer>
+</main>
+<dialog id="modal"><div class="dialog-inner"><button class="close" id="close" aria-label="关闭弹窗">×</button><div id="dialog-body"></div></div></dialog>
+<div id="camera-stage" class="camera-dock"><video id="video" muted autoplay playsinline></video></div>
+<div id="notice" role="status" aria-live="polite"></div>
+<script src="/app.js" type="module"></script>
+</body></html>
+
