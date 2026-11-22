@@ -62,7 +62,7 @@ try {
   assert.equal(await p.locator('.identity-seal').innerText(),'示');
   assert.equal(await p.locator('html').getAttribute('data-paused'),'true');
   await p.getByRole('button',{name:'是我，打开简报'}).click();
-  await p.getByRole('heading',{name:'示例成员的简报'}).waitFor();
+  await p.waitForFunction(()=>document.title==='示例成员的简报 · Halo');
   await p.getByRole('button',{name:'设置今日关注',exact:true}).click();
   await p.getByLabel('关注清单').fill('仅我可见的关注');
   await p.getByRole('button',{name:'保存模块',exact:true}).click();
@@ -147,9 +147,9 @@ try {
   await p.getByRole('button',{name:'关闭弹窗'}).click();
   await p.getByRole('heading',{name:'是小禾吗？'}).waitFor({timeout:45000});
   await p.getByRole('button',{name:'是我，打开简报'}).click();
-  await p.getByRole('heading',{name:'小禾的简报'}).waitFor();
+  await p.waitForFunction(()=>document.title==='小禾的简报 · Halo');
   await p.evaluate(()=>window.hideTestFace());
-  await p.getByRole('heading',{name:'团队晨报'}).waitFor({timeout:25000});
+  await p.waitForFunction(()=>document.title==='Halo · 团队简报',{},{timeout:25000});
   console.log('PASS real local models, virtual video enrollment, recognized candidate, exit after absence');
 
   await p.getByRole('button',{name:'关闭摄像头'}).click();

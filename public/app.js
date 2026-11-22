@@ -80,8 +80,7 @@ function render() {
   const brief=personal?.brief;
   $('day').textContent=fmt(Date.now(),{month:'long',day:'numeric',weekday:'long'});
   $('robot-text').textContent=wall.running?'正在整理':wall.publicBrief.some(s=>s.error)?'部分来源待重试':'机器人待命';
-  $('title').textContent=personal ? personal.profile.name+'的简报' : '团队晨报';
-  $('title').classList.toggle('long-name',Array.from($('title').textContent).length>8);
+  document.title=personal ? personal.profile.name+'的简报 · Halo' : 'Halo · 团队简报';
   $('sync-time').textContent='天气每30分钟 · 新闻每15分钟 · 日程本地保存';
   $('sync').disabled=wall.running;
   document.documentElement.dataset.sync=wall.running?'busy':'idle';

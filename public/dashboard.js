@@ -56,8 +56,6 @@ export function createDashboard({api,setDialog,closeDialog,notify}) {
   function render(){
     const signature=JSON.stringify([scope,data,wall?.publicBrief,dateKey(new Date())]);if(signature===last)return;last=signature;
     $('tiles').innerHTML=data.modules.map(m=>`<section class="widget module widget-${m.type}" data-module="${m.id}"><div class="widget-heading"><span class="type-dot ${m.type}" aria-hidden="true"></span><h2>${esc(m.title)}</h2><button class="module-config" data-edit="${m.id}" aria-label="设置${esc(m.title)}" title="设置此模块">···</button></div><div class="widget-body">${contents(m)}</div><div class="widget-source">${sourceLine(m)}</div>${m.error?'<div class="data-warning">'+(m.checkedAt?'缓存 '+esc(stamp(m.checkedAt))+' · 更新失败':'来源暂不可用')+'</div>':''}</section>`).join('');
-    $('facts').innerHTML='<span><b>16</b> 个模块</span><span><b>'+new Set(data.modules.map(m=>m.type)).size+'</b> 种内容</span>';
-    $('feed-count').textContent=context()+' · 每个模块都可设置关注内容';
     $('tiles').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(b.dataset.edit));
     $('tiles').querySelectorAll('[data-calendar]').forEach(b=>b.onclick=()=>calendar(b.dataset.calendar));
     void showAvatar(data.character);
