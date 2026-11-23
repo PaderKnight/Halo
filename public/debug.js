@@ -42,6 +42,11 @@ function showOk(message) {
   statusBox.textContent = message;
 }
 
+function showSampleError(message) {
+  showError(message);
+  sampleNote.textContent = message;
+}
+
 function describeError(error) {
   return error?.message || String(error || '未知错误');
 }
@@ -190,6 +195,7 @@ async function start() {
     await camera.openCamera();
     if (camera.faceActive) showOk('摄像头已开启，等待人脸。');
     else showError('人脸识别未能启动，请重试。');
+    await listDevices();
   } catch (error) {
     showError(describeError(error));
   } finally {
@@ -212,6 +218,7 @@ async function restartCamera() {
     camera.stop();
     setToggleState();
     await camera.openCamera();
+    await listDevices();
     if (camera.faceActive) showOk('摄像头已重新开启。');
   } catch (error) {
     showError(describeError(error));
@@ -240,10 +247,10 @@ async function listDevices() {
     deviceSelect.append(automatic);
     let index = 0;
     for (const device of devices) {
-      if (device.kind !== 'videoinput') continue;
+      if (device.kind !== 'videoinput' || !device.deviceId) continue;
       index += 1;
       const option = document.createElement('option');
-      option.value = device.deviceId || `camera-${index}`;
+      option.value = device.deviceId;
       option.textContent = device.label || `摄像头 ${index}`;
       deviceSelect.append(option);
     }
@@ -336,7 +343,7 @@ function captureSample() {
     sampleNote.textContent = `已保存 ${name} 的 3 组人脸特征。`;
   } catch (error) {
     pending.delete(id);
-    showError(describeError(error));
+    showSampleError(describeError(error));
   }
 }
 
@@ -356,7 +363,7 @@ function forgetMember() {
     pending.delete(id);
     sampleNote.textContent = `已清除 ${name} 的人脸特征。`;
   } catch (error) {
-    showError('清除特征失败：' + describeError(error));
+    showSampleError('清除特征失败：' + describeError(error));
   }
 }
 
@@ -374,7 +381,7 @@ function exportTemplates() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     sampleNote.textContent = '已导出人脸特征 JSON。';
   } catch (error) {
-    showError('导出特征失败：' + describeError(error));
+    showSampleError('导出特征失败：' + describeError(error));
   }
 }
 
@@ -388,7 +395,7 @@ async function importTemplates(file) {
     sampleNote.textContent = '已导入人脸特征。';
     updateMemberState();
   } catch (error) {
-    showError('导入特征失败：' + describeError(error));
+    showSampleError('导入特征失败：' + describeError(error));
   } finally {
     importInput.value = '';
   }
@@ -401,7 +408,7 @@ function clearTemplates() {
     sampleNote.textContent = '已清空全部人脸特征。';
     updateMemberState();
   } catch (error) {
-    showError('清空特征失败：' + describeError(error));
+    showSampleError('清空特征失败：' + describeError(error));
   }
 }
 
@@ -459,6 +466,8 @@ function wireEvents() {
   $('gesture-toggle').addEventListener('click', () => {
     sampleNote.textContent = '手势面板将在下一步接入。';
   });
+
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => void listDevices());
 
   const redraw = () => {
     try {

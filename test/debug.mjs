@@ -25,6 +25,7 @@ const fakeCamera = () => {
   let calls=0;
   navigator.mediaDevices.getUserMedia = async constraints => {
     calls++; window.__calls=calls; window.__lastConstraints=constraints;
+    window.__granted=true;
     const canvas=document.createElement('canvas');
     canvas.width=640; canvas.height=480;
     canvas.getContext('2d').fillStyle='#222'; canvas.getContext('2d').fillRect(0,0,640,480);
@@ -32,10 +33,14 @@ const fakeCamera = () => {
     window.__stream=stream;
     return stream;
   };
-  navigator.mediaDevices.enumerateDevices = async () => [
-    {kind:'videoinput',deviceId:'fake-1',label:'Fake Camera',groupId:'g'},
-    {kind:'audioinput',deviceId:'mic-1',label:'Fake Mic',groupId:'g'},
-  ];
+  navigator.mediaDevices.enumerateDevices = async () => {
+    const granted=!!window.__granted;
+    return [
+      {kind:'videoinput',deviceId:granted?'fake-1':'',label:granted?'Fake Camera':'',groupId:'g'},
+      {kind:'audioinput',deviceId:granted?'mic-1':'',label:granted?'Fake Mic':'',groupId:'g'},
+    ];
+  };
+  navigator.mediaDevices.addEventListener = navigator.mediaDevices.addEventListener || (()=>{});
 };
 try {
   await Promise.race([once(server.stdout,'data'),once(server,'exit').then(()=>{throw Error('test server failed');})]);
@@ -58,6 +63,10 @@ try {
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('morning.face.tuning')).matchThreshold),0.55);
   await page.locator('#scores').filter({hasText:'未检测到人脸'}).waitFor();
   await page.locator('#device option').first().waitFor({state:'attached'});
+  // Device ids appear only after permission; never fabricate or persist placeholder ids.
+  await page.waitForFunction(()=>[...document.querySelectorAll('#device option')].some(option=>option.value==='fake-1'));
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#device option')].some(option=>/^camera-\d+$/.test(option.value))),false);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('morning.camera.device')),null);
   assert.deepEqual(errors,[]);
 
   // The page is standalone: the main wall scripts and styles are never requested.
@@ -81,6 +90,12 @@ try {
   await page.locator('#enroll-list').selectOption('u2');
   await page.locator('#capture-sample').click();
   await page.locator('#sample-note').filter({hasText:'未检测到人脸'}).waitFor();
+
+  // Sample-panel failures stay visible in #sample-note across camera status updates.
+  await page.locator('#import-templates').setInputFiles({name:'broken.json',mimeType:'application/json',buffer:Buffer.from('{not json')});
+  await page.locator('#sample-note').filter({hasText:'导入特征失败'}).waitFor();
+  await page.waitForTimeout(800);
+  assert.match(await page.locator('#sample-note').innerText(),/导入特征失败/);
   assert.deepEqual(errors,[]);
   console.log('PASS debug page loads camera, tuning, standalone assets and sample guard');
   await page.close();
