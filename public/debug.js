@@ -23,7 +23,11 @@ const importInput = $('import-templates');
 const gestureToggle = $('gesture-toggle');
 const gestureEnabledInput = $('gesture-enabled');
 const gestureState = $('gesture-state');
+const gestureStable = $('gesture-stable');
 const gestureError = $('gesture-error');
+const handFps = $('hand-fps');
+const handTiming = $('hand-timing');
+const handCount = $('hand-count');
 const gestureLog = $('gesture-log');
 const gestureExport = $('gesture-export');
 
@@ -61,6 +65,7 @@ let gestureStarting = false;
 let profiles = [];
 let profileNames = new Map();
 let frameStamps = [];
+let handFrameStamps = [];
 let starting = false;
 const pending = new Map();
 
@@ -187,7 +192,7 @@ function renderStatus(payload) {
     : '0.0';
   const count = Number.isFinite(payload?.count) ? payload.count : 0;
   const detectMs = Number.isFinite(payload?.timings?.detectMs) ? payload.timings.detectMs : '—';
-  showOk(`人脸 ${count} · 检测 ${detectMs}ms · 人脸 ${fps}/s · 手部 —/s`);
+  showOk(`人脸 ${count} · 检测 ${detectMs}ms · 人脸 ${fps}/s`);
 }
 
 function formatScore(value) {
@@ -199,7 +204,9 @@ function renderScores(payload) {
   scoresBox.textContent = '';
   if (!scores.length) {
     const empty = document.createElement('p');
-    empty.textContent = payload?.count ? '检测到人脸，但还没有成员样本。' : '未检测到人脸。';
+    if (payload?.count > 1) empty.textContent = '检测到多张人脸，距离不计算。';
+    else if (payload?.count) empty.textContent = '检测到人脸，但还没有成员样本。';
+    else empty.textContent = '未检测到人脸。';
     scoresBox.append(empty);
     return;
   }
@@ -286,15 +293,54 @@ function drawHands(context, hands, width, height) {
   }
 }
 
+function handFpsValue() {
+  const now = performance.now();
+  handFrameStamps.push(now);
+  handFrameStamps = handFrameStamps.filter(stamp => now - stamp <= 2000);
+  return handFrameStamps.length > 1
+    ? ((handFrameStamps.length - 1) / ((now - handFrameStamps[0]) / 1000)).toFixed(1)
+    : '0.0';
+}
+
+function handLabel(handedness) {
+  if (handedness === 'Left') return '左手';
+  if (handedness === 'Right') return '右手';
+  return handedness || '手部';
+}
+
+function currentStableFrames() {
+  const value = engine?.settings?.stableFrames;
+  return Number.isFinite(value) ? value : gestureTuning.stableFrames;
+}
+
+function renderHandStats(payload, hands, best) {
+  const detectMs = Number.isFinite(payload?.timings?.detectMs) ? payload.timings.detectMs : null;
+  handFps.textContent = `手部 ${handFpsValue()}/s`;
+  handTiming.textContent = `手部耗时 ${detectMs === null ? '—' : detectMs}ms`;
+  const score = Number.isFinite(best?.score) ? best.score.toFixed(2) : '—';
+  handCount.textContent = best
+    ? `手: ${hands.length} (${handLabel(best.handedness)} ${score})`
+    : `手: ${hands.length}`;
+  const stable = Number.isFinite(payload?.progress?.count) ? payload.progress.count : 0;
+  gestureStable.textContent = `稳定 ${stable}/${currentStableFrames()}`;
+}
+
+function resetHandStats() {
+  handFrameStamps = [];
+  handFps.textContent = '手部 —/s';
+  handTiming.textContent = '手部耗时 —ms';
+  handCount.textContent = '手: 0';
+  gestureStable.textContent = `稳定 0/${currentStableFrames()}`;
+}
+
 function onGestureFrame(payload) {
   try {
     const hands = Array.isArray(payload?.hands) ? payload.hands : [];
     latestHands = hands;
-    if (hands.length) {
-      const best = hands.reduce(
-        (current, hand) => (hand.score > current.score ? hand : current),
-        hands[0],
-      );
+    const best = hands.length
+      ? hands.reduce((current, hand) => (hand.score > current.score ? hand : current), hands[0])
+      : null;
+    if (best) {
       latestHandFrame = { landmarks: best.landmarks, handedness: best.handedness, at: payload?.at };
       const pose = payload?.pose;
       const confidence = Number.isFinite(payload?.confidence) ? payload.confidence : 0;
@@ -304,6 +350,7 @@ function onGestureFrame(payload) {
     } else {
       gestureState.textContent = '未检测到';
     }
+    renderHandStats(payload, hands, best);
     drawOverlay(latestFrame?.detections);
   } catch (error) {
     showGestureError('手势画面绘制失败：' + describeError(error));
@@ -332,6 +379,7 @@ function setGestureToggleState() {
 function resetGestureView() {
   latestHands = [];
   latestHandFrame = null;
+  resetHandStats();
   drawOverlay(latestFrame?.detections);
 }
 
@@ -350,6 +398,7 @@ async function startGestures() {
     next = new GestureEngine(video, {
       onFrame: onGestureFrame,
       onEvent: onGestureEvent,
+      onStop: onEngineStopped,
       settings: gestureTuning,
     });
     await next.start();
@@ -364,6 +413,14 @@ async function startGestures() {
     gestureStarting = false;
     setGestureToggleState();
   }
+}
+
+function onEngineStopped(error) {
+  engine = null;
+  resetGestureView();
+  gestureState.textContent = '手势未启动';
+  if (error) showGestureError('手势检测已停止：' + describeError(error));
+  setGestureToggleState();
 }
 
 function stopGestures() {
@@ -444,6 +501,7 @@ async function start() {
 }
 
 function stop() {
+  stopGestures();
   camera.stop();
   frameStamps = [];
   setToggleState();
@@ -452,12 +510,14 @@ function stop() {
 }
 
 async function restartCamera() {
+  stopGestures();
   try {
     camera.stop();
     setToggleState();
     await camera.openCamera();
     await listDevices();
     if (camera.faceActive) showOk('摄像头已重新开启。');
+    if (gestureEnabledInput.checked && camera.streaming) void startGestures();
   } catch (error) {
     showError(describeError(error));
   } finally {

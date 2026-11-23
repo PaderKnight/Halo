@@ -5,10 +5,11 @@ const WASM_PATH = '/mediapipe/wasm';
 const MODEL_PATH = '/models/hand_landmarker.task';
 
 export class GestureEngine {
-  constructor(video, { onFrame = () => {}, onEvent = () => {}, settings = {} } = {}) {
+  constructor(video, { onFrame = () => {}, onEvent = () => {}, onStop = () => {}, settings = {} } = {}) {
     this.video = video;
     this.onFrame = typeof onFrame === 'function' ? onFrame : () => {};
     this.onEvent = typeof onEvent === 'function' ? onEvent : () => {};
+    this.onStop = typeof onStop === 'function' ? onStop : () => {};
     this.settings = {
       ...DEFAULT_GESTURE_SETTINGS,
       ...(settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {}),
@@ -87,6 +88,7 @@ export class GestureEngine {
       // A broken frame must never escape as an uncaught exception.
       console.error('手势检测循环失败', error);
       this.stop();
+      try { this.onStop(error); } catch (stopError) { console.error('手势停止回调失败', stopError); }
       return;
     }
     this._schedule(this.settings.intervalMs);
@@ -99,7 +101,9 @@ export class GestureEngine {
     if (!(at > this.lastTimestamp)) at = this.lastTimestamp + 1;
     this.lastTimestamp = at;
 
+    const detectStarted = performance.now();
     const result = this.handLandmarker?.detectForVideo(video, at);
+    const detectMs = Math.round(performance.now() - detectStarted);
     const landmarksList = Array.isArray(result?.landmarks) ? result.landmarks : [];
     const handednessList = Array.isArray(result?.handedness) ? result.handedness : [];
     const hands = [];
@@ -124,7 +128,7 @@ export class GestureEngine {
       at,
     });
 
-    this.onFrame({ hands, pose, confidence, at });
+    this.onFrame({ hands, pose, confidence, at, timings: { detectMs }, progress: this.machine.progress });
     for (const event of events) this.onEvent(event);
   }
 }

@@ -35,6 +35,11 @@
       </section>
       <aside class="panel">
         <p id="status" class="status">正在启动摄像头…</p>
+        <p class="hand-stats">
+          <span id="hand-fps">手部 —/s</span>
+          <span id="hand-timing">手部耗时 —ms</span>
+          <span id="hand-count">手: 0</span>
+        </p>
         <div id="scores" class="scores"><p>未检测到人脸。</p></div>
         <p id="sample-note" class="note" role="status"></p>
       </aside>
@@ -89,7 +94,10 @@
           <button type="button" id="gesture-toggle">启动手势</button>
         </div>
       </div>
-      <p id="gesture-state" class="gesture-state" role="status">手势未启动</p>
+      <div class="gesture-state-line">
+        <p id="gesture-state" class="gesture-state" role="status">手势未启动</p>
+        <p id="gesture-stable" class="gesture-stable">稳定 0/4</p>
+      </div>
       <p id="gesture-error" class="gesture-error" role="status"></p>
       <div class="sliders gesture-sliders">
         <label>稳定帧

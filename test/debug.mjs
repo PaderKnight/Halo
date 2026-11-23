@@ -102,6 +102,10 @@ try {
   await page.locator('#gesture-panel').waitFor();
   await page.locator('#gesture-toggle').click();
   await page.locator('#gesture-state').filter({hasText:'未检测到'}).waitFor({timeout:60000});
+  // Hand diagnostics update from frame arrivals; the stable run starts at zero with no hand present.
+  await page.waitForFunction(()=>/\d+(?:\.\d+)?\/s/.test(document.querySelector('#hand-fps')?.textContent||''),{},{timeout:60000});
+  assert.match(await page.locator('#hand-timing').innerText(),/ms/);
+  assert.match(await page.locator('#gesture-stable').innerText(),/0\/4/);
   assert.equal(await page.evaluate(()=>localStorage.getItem('morning.gesture.tuning') !== null),true);
   assert.equal(await page.evaluate(()=>{
     const tuning=JSON.parse(localStorage.getItem('morning.gesture.tuning'));

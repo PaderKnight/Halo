@@ -104,6 +104,20 @@ try {
   }
 
   {
+    const {p,errors}=await openPage({gesture:'on'});
+    await p.waitForFunction(()=>document.documentElement.dataset.camera==='on',{},{timeout:30000});
+    await p.getByRole('button',{name:'暂停人脸识别',exact:true}).click();
+    assert.equal(await p.evaluate(()=>window.__stream.getTracks()[0].readyState),'live');
+    await p.evaluate(()=>localStorage.setItem('morning.gesture.enabled','off'));
+    await p.locator('#cam').click();
+    await p.waitForFunction(()=>document.documentElement.dataset.camera==='off');
+    assert.equal(await p.evaluate(()=>window.__stream.getTracks()[0].readyState),'ended');
+    assert.deepEqual(errors,[]);
+    await p.close();
+    console.log('PASS paused face with gestures disabled closes the stream from the camera button');
+  }
+
+  {
     const {p,errors}=await openPage({gesture:'on',denied:true});
     await p.locator('#notice').filter({hasText:'权限'}).waitFor();
     assert.deepEqual(await p.evaluate(()=>document.documentElement.dataset.camera),'off');

@@ -83,6 +83,7 @@ export class Camera {
         catch (err) {
           lastError = err;
           if (token !== this.generation) return;
+          if (err?.name !== 'OverconstrainedError') throw err;
         }
       }
       if (!stream) throw lastError || Error('摄像头启动失败。');

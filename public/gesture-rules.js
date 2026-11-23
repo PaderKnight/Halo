@@ -79,6 +79,14 @@ export class GestureStateMachine {
     this.settings = { ...this.settings, ...partial };
   }
 
+  get progress() {
+    return { pose: this.run.pose, count: this.run.count };
+  }
+
+  get stableCount() {
+    return this.run.count;
+  }
+
   push(frame = {}) {
     const f = frame && typeof frame === 'object' ? frame : {};
     const at = Number.isFinite(f.at) ? f.at : this.lastAt;

@@ -54,6 +54,31 @@ try {
   await page.waitForFunction(() => document.title === 'Halo · 团队简报', {}, { timeout: 5000 });
   assert.deepEqual(errors, []);
   console.log('PASS gesture stub drives the wall back from personal view');
+
+  // Spec §8: when the hand model fails, the wall still opens the camera and keeps manual selection.
+  const degraded = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  degraded.setDefaultTimeout(120000);
+  const degradedErrors = [];
+  degraded.on('pageerror', err => degradedErrors.push(err.message));
+  await degraded.emulateMedia({ reducedMotion: 'reduce' });
+  await degraded.addInitScript(() => {
+    try { localStorage.setItem('morning.gesture.enabled', 'on'); } catch {}
+    if (!navigator.mediaDevices) Object.defineProperty(navigator, 'mediaDevices', { value: {} });
+    navigator.mediaDevices.getUserMedia = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640; canvas.height = 480;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#222'; ctx.fillRect(0, 0, 640, 480);
+      return canvas.captureStream(5);
+    };
+  });
+  await degraded.route('**/models/hand_landmarker.task', route => route.abort());
+  await degraded.goto(url);
+  await degraded.waitForFunction(() => document.documentElement.dataset.camera === 'on', {}, { timeout: 30000 });
+  assert.equal(await degraded.locator('#manual').isEnabled(), true);
+  assert.deepEqual(degradedErrors, []);
+  await degraded.close();
+  console.log('PASS wall keeps the camera and manual selection when the hand model fails');
 } finally {
   await browser?.close();
   if(server.exitCode===null){const stopped=once(server,'exit');server.kill();await stopped;}

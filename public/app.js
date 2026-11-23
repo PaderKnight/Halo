@@ -24,7 +24,7 @@ const camera = new Camera(video, onFrame, error => {
   render();
   notify(error);
 });
-const gestureEnabled = () => localStorage.getItem('morning.gesture.enabled') !== 'off';
+const gestureEnabled = () => { try { return localStorage.getItem('morning.gesture.enabled') !== 'off'; } catch { return true; } };
 async function startGestures() {
   if (gesture || gestureStarting || !gestureEnabled() || !camera.streaming) return;
   gestureStarting = true;
@@ -36,6 +36,7 @@ async function startGestures() {
     await engine.start();
     if (!camera.streaming || !gestureEnabled()) { engine.stop(); return; }
     gesture = engine;
+    render();
   } catch (e) {
     console.warn('手势不可用', e);
     gesture = null;
@@ -111,12 +112,15 @@ setInterval(updateClock,10000);
 function cameraStatus() {
   if (starting) return '正在启动摄像头';
   if (!camera.streaming) return cameraMessage || '摄像头未开启';
-  if (camera.faceActive) return gestureEnabled() ? '摄像头已开启 · 手势运行中' : '摄像头已开启';
-  return gestureEnabled() ? '人脸识别已暂停 · 手势运行中' : '摄像头已开启';
+  const gestureRunning = gestureEnabled() && gesture?.running;
+  if (camera.faceActive) return gestureRunning ? '摄像头已开启 · 手势运行中' : '摄像头已开启';
+  if (gestureEnabled()) return gestureRunning ? '人脸识别已暂停 · 手势运行中' : '人脸识别已暂停';
+  return '人脸识别已暂停 · 手势已关闭';
 }
 function cameraButtonLabel() {
+  if (!camera.streaming) return '开启摄像头识别';
   if (camera.faceActive) return gestureEnabled() ? '暂停人脸识别' : '关闭摄像头';
-  return camera.streaming ? '开始人脸识别' : '开启摄像头识别';
+  return gestureEnabled() ? '开始人脸识别' : '关闭摄像头';
 }
 const dashboard=createDashboard({api,setDialog,closeDialog,notify});
 function render() {
@@ -144,13 +148,18 @@ function render() {
     $('side').innerHTML=`<div class="panel-head"><h2>我的简报</h2></div><p>确认身份后，查看你的天气、日程和关注内容。</p><button class="primary" id="manual">${demoOnly?'体验示例简报':'选择成员简报'}</button><div class="camera-control"><span class="statusline"><i class="indicator ${camera.streaming?'':'off'}"></i>${esc(cameraStatus())}</span><button class="textbtn" id="cam" ${starting?'disabled':''}>${cameraButtonLabel()}</button></div>`;
     $('manual').onclick=()=>demoOnly ? confirmPerson(wall.profiles[0],'manual') : choose();
     $('cam').onclick=async()=>{
-      if (camera.faceActive) {
-        if (gestureEnabled()) { camera.pauseFace(); render(); }
-        else { camera.stop(); localStorage.removeItem('morning.camera'); cameraMessage=''; render(); }
+      if (!camera.streaming) {
+        try { await startCamera(); if (camera.faceActive) { localStorage.setItem('morning.camera','on'); if (!wall.profiles.some(p=>enrolled(p.id))) notify('摄像头已开启。请在「成员与订阅」中录入本人。'); } }
+        catch(e){notify(e.message);} render();
         return;
       }
-      try { await startCamera(); if (camera.faceActive) { localStorage.setItem('morning.camera','on'); if (!wall.profiles.some(p=>enrolled(p.id))) notify('摄像头已开启。请在「成员与订阅」中录入本人。'); } }
-      catch(e){notify(e.message);} render();
+      if (camera.faceActive && gestureEnabled()) { camera.pauseFace(); render(); return; }
+      if (!camera.faceActive && gestureEnabled()) {
+        try { await startCamera(); } catch(e){notify(e.message);}
+        render();
+        return;
+      }
+      camera.stop(); localStorage.removeItem('morning.camera'); cameraMessage=''; render();
     };
   }
   showBoard(personal?.profile.id || 'public','',wall.running);
