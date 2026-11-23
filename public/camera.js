@@ -138,10 +138,10 @@ export class Camera {
           scores: face ? rank(face,bank) : [],
           threshold: this.tuning.matchThreshold,
           margin: this.tuning.margin,
-          detections: this.debug ? found.map(item => ({
+          detections: found.map(item => ({
             box: { x:item.detection.box.x, y:item.detection.box.y, width:item.detection.box.width, height:item.detection.box.height },
             landmarks: (item.landmarks?.positions || []).map(point => ({ x:point.x, y:point.y })),
-          })) : null,
+          })),
           timings: { detectMs: Math.round(performance.now() - started) },
         });
         this.faceTimer = setTimeout(scan,450);

@@ -67,6 +67,26 @@ try {
     console.log('PASS gesture off keeps the old click-to-start and close behavior');
   }
 
+  {
+    const {p}=await openPage({gesture:'off'});
+    await p.evaluate(async()=>{
+      const { Camera } = await import('/camera.js');
+      const video=document.createElement('video');
+      video.muted=true; video.playsInline=true;
+      window.__detachedPayloads=[];
+      window.__detachedCamera=new Camera(video,payload=>window.__detachedPayloads.push(payload),err=>{window.__detachedError=err?.message || String(err);});
+      await window.__detachedCamera.openCamera();
+    });
+    await p.waitForFunction(()=>window.__detachedPayloads?.length>0,{},{timeout:120000});
+    const payload=await p.evaluate(()=>window.__detachedPayloads[0]);
+    assert.equal(Array.isArray(payload.detections),true);
+    assert.equal(Array.isArray(payload.scores),true);
+    assert.equal(await p.evaluate(()=>window.__detachedError || null),null);
+    await p.evaluate(()=>window.__detachedCamera.stop());
+    await p.close();
+    console.log('PASS frame payload includes detections and scores without setDebug');
+  }
+
   let streamingPage;
   {
     const {p,errors}=await openPage({gesture:'on'});
