@@ -1,9 +1,13 @@
 import { Camera, DEFAULT_FACE_TUNING, loadFaceTuning, enrolled, remember, forget, addSample } from './camera.js';
+import { GestureEngine } from './gesture.js';
+import { DEFAULT_GESTURE_SETTINGS } from './gesture-rules.js';
 
 const TUNING_KEY = 'morning.face.tuning';
 const TEMPLATES_KEY = 'morning.wall.face-templates.v1';
 const DEVICE_KEY = 'morning.camera.device';
 const SIZE_KEY = 'morning.camera.size';
+const GESTURE_ENABLED_KEY = 'morning.gesture.enabled';
+const GESTURE_TUNING_KEY = 'morning.gesture.tuning';
 
 const $ = id => document.getElementById(id);
 const video = $('video');
@@ -16,6 +20,12 @@ const statusBox = $('status');
 const sampleNote = $('sample-note');
 const enrollList = $('enroll-list');
 const importInput = $('import-templates');
+const gestureToggle = $('gesture-toggle');
+const gestureEnabledInput = $('gesture-enabled');
+const gestureState = $('gesture-state');
+const gestureError = $('gesture-error');
+const gestureLog = $('gesture-log');
+const gestureExport = $('gesture-export');
 
 const tuningInputs = {
   matchThreshold: $('match-threshold'),
@@ -24,8 +34,30 @@ const tuningInputs = {
   inputSize: $('input-size'),
 };
 
+const gestureInputs = {
+  stableFrames: $('gesture-stable-frames'),
+  holdMs: $('gesture-hold-ms'),
+  cooldownMs: $('gesture-cooldown-ms'),
+  intervalMs: $('gesture-interval-ms'),
+};
+
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [17, 18], [18, 19], [19, 20],
+  [0, 17],
+];
+const GESTURE_LABELS = { openPalm: '张开手掌', fist: '握拳', thumbsUp: '竖大拇指', wave: '挥手' };
+
 let tuning = loadFaceTuning();
+let gestureTuning = loadGestureTuning();
 let latestFrame = null;
+let latestHands = [];
+let latestHandFrame = null;
+let engine = null;
+let gestureStarting = false;
 let profiles = [];
 let profileNames = new Map();
 let frameStamps = [];
@@ -82,6 +114,57 @@ function applyTuning(values = readTuningInputs(), persist = true) {
       showError('调参保存失败：' + describeError(error));
     }
   }
+}
+
+function loadGestureTuning() {
+  let stored = {};
+  try {
+    const raw = localStorage.getItem(GESTURE_TUNING_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) stored = parsed;
+  } catch { stored = {}; }
+  const merged = {};
+  for (const [key, fallback] of Object.entries(DEFAULT_GESTURE_SETTINGS)) {
+    merged[key] = Number.isFinite(stored[key]) ? stored[key] : fallback;
+  }
+  return merged;
+}
+
+function syncGestureInputs(values = gestureTuning) {
+  for (const [key, input] of Object.entries(gestureInputs)) {
+    if (Number.isFinite(values[key])) input.value = String(values[key]);
+    const output = document.querySelector(`output[for="${input.id}"]`);
+    if (output) output.textContent = input.value;
+  }
+}
+
+function readGestureInputs() {
+  return Object.fromEntries(
+    Object.entries(gestureInputs).map(([key, input]) => [key, Number(input.value)]),
+  );
+}
+
+function showGestureError(message) {
+  gestureError.textContent = message || '';
+}
+
+function persistGestureTuning() {
+  try {
+    localStorage.setItem(GESTURE_TUNING_KEY, JSON.stringify(gestureTuning));
+  } catch (error) {
+    showGestureError('手势调参保存失败：' + describeError(error));
+  }
+}
+
+function applyGestureTuning(values = readGestureInputs(), persist = true) {
+  const merged = { ...DEFAULT_GESTURE_SETTINGS, ...gestureTuning };
+  for (const [key, value] of Object.entries(values)) {
+    if (Number.isFinite(value)) merged[key] = value;
+  }
+  gestureTuning = merged;
+  syncGestureInputs();
+  engine?.updateSettings(gestureTuning);
+  if (persist) persistGestureTuning();
 }
 
 function onFrame(payload) {
@@ -172,6 +255,161 @@ function drawOverlay(detections) {
       context.arc(point.x, point.y, 1.6, 0, Math.PI * 2);
       context.fill();
     }
+  }
+  drawHands(context, latestHands, width, height);
+}
+
+function validPoint(point) {
+  return Number.isFinite(point?.x) && Number.isFinite(point?.y);
+}
+
+function drawHands(context, hands, width, height) {
+  for (const hand of Array.isArray(hands) ? hands : []) {
+    const points = Array.isArray(hand?.landmarks) ? hand.landmarks : [];
+    context.strokeStyle = '#a78bfa';
+    context.fillStyle = '#f472b6';
+    for (const [from, to] of HAND_CONNECTIONS) {
+      const a = points[from];
+      const b = points[to];
+      if (!validPoint(a) || !validPoint(b)) continue;
+      context.beginPath();
+      context.moveTo(a.x * width, a.y * height);
+      context.lineTo(b.x * width, b.y * height);
+      context.stroke();
+    }
+    for (const point of points) {
+      if (!validPoint(point)) continue;
+      context.beginPath();
+      context.arc(point.x * width, point.y * height, 1.8, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+}
+
+function onGestureFrame(payload) {
+  try {
+    const hands = Array.isArray(payload?.hands) ? payload.hands : [];
+    latestHands = hands;
+    if (hands.length) {
+      const best = hands.reduce(
+        (current, hand) => (hand.score > current.score ? hand : current),
+        hands[0],
+      );
+      latestHandFrame = { landmarks: best.landmarks, handedness: best.handedness, at: payload?.at };
+      const pose = payload?.pose;
+      const confidence = Number.isFinite(payload?.confidence) ? payload.confidence : 0;
+      gestureState.textContent = pose
+        ? `${GESTURE_LABELS[pose] || pose} · 置信度 ${confidence.toFixed(2)}`
+        : `检测到手部 · 置信度 ${confidence.toFixed(2)}`;
+    } else {
+      gestureState.textContent = '未检测到';
+    }
+    drawOverlay(latestFrame?.detections);
+  } catch (error) {
+    showGestureError('手势画面绘制失败：' + describeError(error));
+  }
+}
+
+function onGestureEvent(event) {
+  if (!event) return;
+  try {
+    const item = document.createElement('li');
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const confidence = Number.isFinite(event.confidence) ? ` · ${event.confidence.toFixed(2)}` : '';
+    item.textContent = `${time} ${GESTURE_LABELS[event.type] || event.type}${confidence}`;
+    gestureLog.prepend(item);
+    while (gestureLog.children.length > 20) gestureLog.lastElementChild.remove();
+  } catch (error) {
+    showGestureError('手势日志更新失败：' + describeError(error));
+  }
+}
+
+function setGestureToggleState() {
+  gestureToggle.textContent = engine?.running ? '停止手势' : '启动手势';
+  gestureToggle.disabled = gestureStarting;
+}
+
+function resetGestureView() {
+  latestHands = [];
+  latestHandFrame = null;
+  drawOverlay(latestFrame?.detections);
+}
+
+async function startGestures() {
+  if (engine?.running || gestureStarting) return;
+  if (!video.videoWidth) {
+    showGestureError('请先开启摄像头再启动手势。');
+    return;
+  }
+  gestureStarting = true;
+  setGestureToggleState();
+  showGestureError('');
+  gestureState.textContent = '手势启动中…';
+  let next = null;
+  try {
+    next = new GestureEngine(video, {
+      onFrame: onGestureFrame,
+      onEvent: onGestureEvent,
+      settings: gestureTuning,
+    });
+    await next.start();
+    engine = next;
+    gestureState.textContent = '未检测到';
+  } catch (error) {
+    next?.stop();
+    showGestureError('手势引擎启动失败：' + describeError(error));
+    gestureState.textContent = '手势未启动';
+    resetGestureView();
+  } finally {
+    gestureStarting = false;
+    setGestureToggleState();
+  }
+}
+
+function stopGestures() {
+  const current = engine;
+  engine = null;
+  try { current?.stop(); } catch (error) { console.warn('手势停止失败', error); }
+  resetGestureView();
+  gestureState.textContent = '手势未启动';
+  setGestureToggleState();
+}
+
+function toggleGestures() {
+  if (engine?.running) stopGestures();
+  else void startGestures();
+}
+
+function exportGestureFrame() {
+  if (!latestHandFrame) {
+    showGestureError('还没有检测到手部，无法导出手势帧。');
+    return;
+  }
+  try {
+    const blob = new Blob([JSON.stringify(latestHandFrame)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'halo-gesture-frame.json';
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showGestureError('');
+  } catch (error) {
+    showGestureError('导出手势帧失败：' + describeError(error));
+  }
+}
+
+function gestureEnabled() {
+  try { return localStorage.getItem(GESTURE_ENABLED_KEY) !== 'off'; } catch { return true; }
+}
+
+function persistGestureEnabled(enabled) {
+  try {
+    localStorage.setItem(GESTURE_ENABLED_KEY, enabled ? 'on' : 'off');
+  } catch (error) {
+    showGestureError('手势开关保存失败：' + describeError(error));
   }
 }
 
@@ -463,9 +701,20 @@ function wireEvents() {
   $('clear-templates').addEventListener('click', clearTemplates);
   importInput.addEventListener('change', () => void importTemplates(importInput.files?.[0]));
 
-  $('gesture-toggle').addEventListener('click', () => {
-    sampleNote.textContent = '手势面板将在下一步接入。';
+  gestureToggle.addEventListener('click', toggleGestures);
+  gestureEnabledInput.addEventListener('change', () => {
+    persistGestureEnabled(gestureEnabledInput.checked);
+    if (gestureEnabledInput.checked) void startGestures();
+    else stopGestures();
   });
+  for (const input of Object.values(gestureInputs)) {
+    input.addEventListener('input', () => {
+      const output = document.querySelector(`output[for="${input.id}"]`);
+      if (output) output.textContent = input.value;
+      applyGestureTuning();
+    });
+  }
+  gestureExport.addEventListener('click', exportGestureFrame);
 
   navigator.mediaDevices?.addEventListener?.('devicechange', () => void listDevices());
 
@@ -487,13 +736,20 @@ function savedSizeValue() {
 }
 
 async function boot() {
+  applyGestureTuning(gestureTuning, true);
+  gestureEnabledInput.checked = gestureEnabled();
   syncTuningInputs(tuning);
   sizeSelect.value = savedSizeValue();
   wireEvents();
   await listDevices();
   await loadProfiles();
   await start();
+  if (gestureEnabledInput.checked && camera.streaming) void startGestures();
 }
+
+window.addEventListener('beforeunload', () => {
+  try { engine?.stop(); } catch { /* page is going away */ }
+});
 
 window.addEventListener('unhandledrejection', event => {
   showError('操作失败：' + describeError(event.reason));

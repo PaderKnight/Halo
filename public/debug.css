@@ -174,6 +174,24 @@ select:focus-visible, button:focus-visible, input:focus-visible {
 
 .gesture-head h2 { margin: 0; }
 
+.gesture-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+.gesture-actions label.switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.gesture-actions input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.gesture-state { margin: 12px 0 0; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+.gesture-error { margin: 8px 0 0; min-height: 20px; color: var(--error); font-size: 13px; }
+
+.gesture-sliders { margin: 12px 0; }
+
 #gesture-log {
   margin: 12px 0 0;
   padding-left: 20px;

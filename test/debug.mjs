@@ -97,7 +97,35 @@ try {
   await page.waitForTimeout(800);
   assert.match(await page.locator('#sample-note').innerText(),/导入特征失败/);
   assert.deepEqual(errors,[]);
-  console.log('PASS debug page loads camera, tuning, standalone assets and sample guard');
+
+  // Gesture panel: the engine starts on demand, reports no hands and persists merged tuning.
+  await page.locator('#gesture-panel').waitFor();
+  await page.locator('#gesture-toggle').click();
+  await page.locator('#gesture-state').filter({hasText:'未检测到'}).waitFor({timeout:60000});
+  assert.equal(await page.evaluate(()=>localStorage.getItem('morning.gesture.tuning') !== null),true);
+  assert.equal(await page.evaluate(()=>{
+    const tuning=JSON.parse(localStorage.getItem('morning.gesture.tuning'));
+    return tuning.stableFrames===4 && tuning.holdMs===600 && tuning.cooldownMs===2000 && tuning.intervalMs===80;
+  }),true);
+  await page.waitForTimeout(600);
+  assert.deepEqual(errors,[]);
+
+  // A missing model degrades gracefully: a gesture error is shown, the video keeps running and no page errors escape.
+  const bad=await browser.newPage({viewport:{width:1280,height:900}});
+  bad.setDefaultTimeout(120000);
+  const badErrors=[];bad.on('pageerror',err=>badErrors.push(err.message));
+  await bad.addInitScript(fakeCamera);
+  await bad.route('**/models/hand_landmarker.task',route=>route.abort());
+  await bad.goto(url+'/debug.html');
+  await bad.locator('#video').waitFor();
+  await bad.waitForFunction(()=>document.querySelector('#video').videoWidth>0);
+  await bad.locator('#gesture-toggle').click();
+  await bad.locator('#gesture-error').filter({hasText:'手势'}).waitFor({timeout:30000});
+  assert.equal(await bad.evaluate(()=>document.querySelector('#video').videoWidth>0),true);
+  assert.deepEqual(badErrors,[]);
+  await bad.close();
+
+  console.log('PASS debug page loads camera, tuning, standalone assets, sample guard and gesture panel');
   await page.close();
 } finally {
   await browser?.close();

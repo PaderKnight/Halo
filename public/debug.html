@@ -84,9 +84,34 @@
     <section id="gesture-panel" class="gesture" aria-label="手势">
       <div class="gesture-head">
         <h2>手势</h2>
-        <button type="button" id="gesture-toggle">启动手势</button>
+        <div class="gesture-actions">
+          <label class="switch"><input type="checkbox" id="gesture-enabled" checked> 启用大屏手势</label>
+          <button type="button" id="gesture-toggle">启动手势</button>
+        </div>
       </div>
-      <p class="note">手势面板将在下一步接入，当前仅保留占位。</p>
+      <p id="gesture-state" class="gesture-state" role="status">手势未启动</p>
+      <p id="gesture-error" class="gesture-error" role="status"></p>
+      <div class="sliders gesture-sliders">
+        <label>稳定帧
+          <input id="gesture-stable-frames" type="range" min="1" max="10" step="1" value="4">
+          <output for="gesture-stable-frames">4</output>
+        </label>
+        <label>保持毫秒
+          <input id="gesture-hold-ms" type="range" min="100" max="3000" step="100" value="600">
+          <output for="gesture-hold-ms">600</output>
+        </label>
+        <label>冷却毫秒
+          <input id="gesture-cooldown-ms" type="range" min="0" max="10000" step="100" value="2000">
+          <output for="gesture-cooldown-ms">2000</output>
+        </label>
+        <label>检测间隔
+          <input id="gesture-interval-ms" type="range" min="40" max="1000" step="10" value="80">
+          <output for="gesture-interval-ms">80</output>
+        </label>
+      </div>
+      <div class="row">
+        <button type="button" id="gesture-export">导出当前帧</button>
+      </div>
       <ol id="gesture-log"></ol>
     </section>
   </div>

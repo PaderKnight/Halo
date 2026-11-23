@@ -1,0 +1,130 @@
+import { analyzeHand, GestureStateMachine, DEFAULT_GESTURE_SETTINGS } from './gesture-rules.js';
+
+const VISION_PATH = '/mediapipe/vision_bundle.mjs';
+const WASM_PATH = '/mediapipe/wasm';
+const MODEL_PATH = '/models/hand_landmarker.task';
+
+export class GestureEngine {
+  constructor(video, { onFrame = () => {}, onEvent = () => {}, settings = {} } = {}) {
+    this.video = video;
+    this.onFrame = typeof onFrame === 'function' ? onFrame : () => {};
+    this.onEvent = typeof onEvent === 'function' ? onEvent : () => {};
+    this.settings = {
+      ...DEFAULT_GESTURE_SETTINGS,
+      ...(settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {}),
+    };
+    this.machine = new GestureStateMachine(this.settings);
+    this.handLandmarker = null;
+    this.timer = null;
+    this.lastTimestamp = -1;
+    this._running = false;
+    this._generation = 0;
+  }
+
+  get running() {
+    return this._running;
+  }
+
+  updateSettings(partial) {
+    if (!partial || typeof partial !== 'object' || Array.isArray(partial)) return;
+    this.settings = { ...this.settings, ...partial };
+    this.machine.updateSettings(partial);
+  }
+
+  async start() {
+    if (this._running) return;
+    const token = this._generation;
+    const api = await import(VISION_PATH);
+    const fileset = await api.FilesetResolver.forVisionTasks(WASM_PATH);
+    const landmarker = await api.HandLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: MODEL_PATH, delegate: 'CPU' },
+      runningMode: 'VIDEO',
+      numHands: 2,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    // stop() may have been called while the wasm runtime and model were loading.
+    if (token !== this._generation) {
+      try { landmarker.close?.(); } catch (error) { console.error('手势模型关闭失败', error); }
+      return;
+    }
+    this.handLandmarker = landmarker;
+    this._running = true;
+    this.lastTimestamp = -1;
+    this._schedule(0);
+  }
+
+  stop() {
+    this._generation += 1;
+    this._running = false;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const landmarker = this.handLandmarker;
+    this.handLandmarker = null;
+    if (landmarker) {
+      try { landmarker.close?.(); } catch (error) { console.error('手势模型关闭失败', error); }
+    }
+  }
+
+  _schedule(delay) {
+    if (!this._running) return;
+    clearTimeout(this.timer);
+    const wait = Number.isFinite(delay) ? delay : this.settings.intervalMs;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this._tick();
+    }, Math.max(0, wait));
+  }
+
+  _tick() {
+    if (!this._running) return;
+    try {
+      this._detect();
+    } catch (error) {
+      // A broken frame must never escape as an uncaught exception.
+      console.error('手势检测循环失败', error);
+      this.stop();
+      return;
+    }
+    this._schedule(this.settings.intervalMs);
+  }
+
+  _detect() {
+    const video = this.video;
+    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+    let at = performance.now();
+    if (!(at > this.lastTimestamp)) at = this.lastTimestamp + 1;
+    this.lastTimestamp = at;
+
+    const result = this.handLandmarker?.detectForVideo(video, at);
+    const landmarksList = Array.isArray(result?.landmarks) ? result.landmarks : [];
+    const handednessList = Array.isArray(result?.handedness) ? result.handedness : [];
+    const hands = [];
+    let driver = null;
+    for (let index = 0; index < landmarksList.length; index += 1) {
+      const landmarks = landmarksList[index];
+      const category = handednessList[index]?.[0];
+      const handedness = typeof category?.categoryName === 'string' ? category.categoryName : '';
+      const score = Number.isFinite(category?.score) ? category.score : 0;
+      const analysis = analyzeHand(landmarks);
+      hands.push({ landmarks, handedness, score });
+      if (!driver || score > driver.score) driver = { handedness, score, analysis };
+    }
+
+    const pose = driver?.analysis?.pose ?? null;
+    const confidence = driver ? driver.analysis.ruleScore * driver.score : 0;
+    const events = this.machine.push({
+      pose,
+      confidence,
+      palmX: driver?.analysis?.palmX ?? NaN,
+      hand: driver?.handedness ?? '',
+      at,
+    });
+
+    this.onFrame({ hands, pose, confidence, at });
+    for (const event of events) this.onEvent(event);
+  }
+}
