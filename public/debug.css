@@ -1,0 +1,187 @@
+:root {
+  --bg: #0e1116;
+  --panel: #171c24;
+  --panel-2: #1f2631;
+  --line: #2b3442;
+  --text: #e8edf5;
+  --muted: #9aa7ba;
+  --accent: #59d2ff;
+  --best: #ffd166;
+  --error: #ff9b9b;
+  --ok: #8be28b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 0%, #1b2430 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#debug {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+  display: grid;
+  gap: 18px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+
+h1 { margin: 0; font-size: 20px; letter-spacing: .02em; }
+
+h2 { margin: 0 0 10px; font-size: 15px; color: var(--muted); font-weight: 600; }
+
+.hint { color: var(--muted); font-size: 12px; }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+
+select, button, input[type="file"] {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 10px;
+}
+
+button { cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+
+button:hover { border-color: var(--accent); }
+
+button:disabled { opacity: .55; cursor: default; }
+
+select:focus-visible, button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.stage {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #000;
+  line-height: 0;
+}
+
+#video, #overlay { display: block; }
+
+#video { width: 100%; height: auto; }
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.status { margin: 0; color: var(--ok); font-variant-numeric: tabular-nums; }
+.status[data-state="error"] { color: var(--error); }
+.status[data-state="idle"] { color: var(--muted); }
+
+.scores { display: grid; gap: 6px; min-height: 40px; }
+
+.scores p { margin: 0; }
+
+.scores .score {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 9px;
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scores .score[data-best="true"] {
+  border-color: var(--best);
+  color: var(--best);
+}
+
+.score-tag { color: var(--muted); font-size: 12px; }
+
+.note { margin: 0; min-height: 20px; color: var(--muted); font-size: 13px; }
+
+.tuning, .samples, .gesture {
+  padding: 16px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 20px;
+  margin-bottom: 12px;
+}
+
+.sliders label { grid-template-columns: 1fr auto; align-items: center; }
+
+.sliders input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+.sliders output { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.row { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+
+.row .file { padding-bottom: 0; }
+
+.row .file input { display: block; margin-top: 4px; max-width: 200px; }
+
+.gesture-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.gesture-head h2 { margin: 0; }
+
+#gesture-log {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  #debug { padding: 14px; }
+  .layout { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>摄像头识别调试 · Halo</title>
+  <link rel="stylesheet" href="/debug.css">
+</head>
+<body>
+  <div id="debug">
+    <header class="bar">
+      <div class="title">
+        <h1>摄像头识别调试</h1>
+        <span class="hint">修改参数后请刷新主屏生效</span>
+      </div>
+      <div class="controls">
+        <label>设备
+          <select id="device"></select>
+        </label>
+        <label>分辨率
+          <select id="size">
+            <option value="640x480">640 × 480</option>
+            <option value="1280x720">1280 × 720</option>
+            <option value="1920x1080">1920 × 1080</option>
+          </select>
+        </label>
+        <button type="button" id="toggle">开启摄像头</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="stage" aria-label="摄像头画面">
+        <video id="video" muted playsinline autoplay></video>
+        <canvas id="overlay"></canvas>
+      </section>
+      <aside class="panel">
+        <p id="status" class="status">正在启动摄像头…</p>
+        <div id="scores" class="scores"><p>未检测到人脸。</p></div>
+        <p id="sample-note" class="note" role="status"></p>
+      </aside>
+    </main>
+
+    <section class="tuning" aria-label="识别参数">
+      <h2>识别参数</h2>
+      <div class="sliders">
+        <label>匹配阈值
+          <input id="match-threshold" type="range" min="0.10" max="0.90" step="0.01" value="0.48">
+          <output for="match-threshold">0.48</output>
+        </label>
+        <label>间距
+          <input id="margin" type="range" min="0" max="0.50" step="0.01" value="0.07">
+          <output for="margin">0.07</output>
+        </label>
+        <label>检测分数
+          <input id="detect-score" type="range" min="0.10" max="0.90" step="0.01" value="0.55">
+          <output for="detect-score">0.55</output>
+        </label>
+        <label>输入尺寸
+          <input id="input-size" type="range" min="128" max="640" step="32" value="320">
+          <output for="input-size">320</output>
+        </label>
+      </div>
+      <button type="button" id="restore-tuning">恢复默认</button>
+    </section>
+
+    <section class="samples" aria-label="人脸样本">
+      <h2>人脸样本</h2>
+      <div class="row">
+        <label>成员
+          <select id="enroll-list">
+            <option value="">选择成员</option>
+          </select>
+        </label>
+        <button type="button" id="capture-sample">采集当前人脸</button>
+        <button type="button" id="forget-member">清除所选成员</button>
+        <button type="button" id="export-templates">导出特征</button>
+        <label class="file">导入特征
+          <input id="import-templates" type="file" accept="application/json,.json">
+        </label>
+        <button type="button" id="clear-templates">清空全部特征</button>
+      </div>
+    </section>
+
+    <section id="gesture-panel" class="gesture" aria-label="手势">
+      <div class="gesture-head">
+        <h2>手势</h2>
+        <button type="button" id="gesture-toggle">启动手势</button>
+      </div>
+      <p class="note">手势面板将在下一步接入，当前仅保留占位。</p>
+      <ol id="gesture-log"></ol>
+    </section>
+  </div>
+  <script type="module" src="/debug.js"></script>
+</body>
+</html>
