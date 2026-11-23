@@ -22,7 +22,8 @@ const nullPose = () => ({
 });
 
 export function analyzeHand(landmarks) {
-  if (!Array.isArray(landmarks) || landmarks.length !== 21 || !landmarks.every(isPoint)) return nullPose();
+  if (!Array.isArray(landmarks) || landmarks.length !== 21) return nullPose();
+  for (let i = 0; i < 21; i += 1) if (!isPoint(landmarks[i])) return nullPose();
   const p = landmarks;
   const palmSize = dist(p[0], p[9]);
   if (!(palmSize > 0)) return nullPose();

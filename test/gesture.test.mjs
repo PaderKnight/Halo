@@ -34,7 +34,10 @@ test('classifies open palm, fist and thumbs up', () => {
   assert.equal(analyzeHand(thumbsUp).pose, 'thumbsUp');
 });
 test('rejects malformed landmarks without throwing', () => {
-  for (const bad of [[], Array(21).fill({ x: NaN, y: NaN }), Array(21).fill({ x: 0, y: 0 })])
+  for (const bad of [
+    [], Array(21).fill({ x: NaN, y: NaN }), Array(21).fill({ x: 0, y: 0 }),
+    Array(21), Array(21).fill(undefined),
+  ])
     assert.equal(analyzeHand(bad).pose, null);
 });
 test('holds openPalm for holdMs before emitting', () => {
