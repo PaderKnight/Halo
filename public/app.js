@@ -13,12 +13,14 @@ let consecutive = 0, lastMatch = null, ignored = null, absentSince = 0;
 let starting = false, noticeTimer, cameraMessage = '', lastRender = '';
 const camera = new Camera(video, onFrame, error => {
   localStorage.removeItem('morning.camera');
+  starting = false;
   cameraMessage = error;
   if (enrollment) { enrollment.collect = false; $('slot').dataset.capturing='false'; message(error); }
   if (personal?.via === 'camera' || candidate?.via === 'camera') home();
   render();
   notify(error);
 });
+const gestureEnabled = () => localStorage.getItem('morning.gesture.enabled') !== 'off';
 async function api(url, body) {
   const options = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
   const response = await fetch(url, options);
@@ -68,13 +70,20 @@ function updateClock() {
 updateClock();
 setInterval(updateClock,10000);
 function cameraStatus() {
-  return starting?'正在启动摄像头':camera.active?'摄像头已开启':cameraMessage || '摄像头未开启';
+  if (starting) return '正在启动摄像头';
+  if (!camera.streaming) return cameraMessage || '摄像头未开启';
+  if (camera.faceActive) return gestureEnabled() ? '摄像头已开启 · 手势运行中' : '摄像头已开启';
+  return gestureEnabled() ? '人脸识别已暂停 · 手势运行中' : '摄像头已开启';
+}
+function cameraButtonLabel() {
+  if (camera.faceActive) return gestureEnabled() ? '暂停人脸识别' : '关闭摄像头';
+  return camera.streaming ? '开始人脸识别' : '开启摄像头识别';
 }
 const dashboard=createDashboard({api,setDialog,closeDialog,notify});
 function render() {
   if (!wall) return;
   dashboard.update(personal?.profile.id||'public',wall,personal);
-  const signature=JSON.stringify([wall.running,wall.lastRunAt,wall.publicBrief,wall.profiles,personal,cameraStatus(),starting,new Date().toDateString()]);
+  const signature=JSON.stringify([wall.running,wall.lastRunAt,wall.publicBrief,wall.profiles,personal,cameraStatus(),camera.streaming,camera.faceActive,starting,new Date().toDateString()]);
   if(signature===lastRender) return;
   lastRender=signature;
   const brief=personal?.brief;
@@ -84,7 +93,7 @@ function render() {
   $('sync-time').textContent='天气每30分钟 · 新闻每15分钟 · 日程本地保存';
   $('sync').disabled=wall.running;
   document.documentElement.dataset.sync=wall.running?'busy':'idle';
-  document.documentElement.dataset.camera=camera.active?'on':'off';
+  document.documentElement.dataset.camera=camera.streaming?'on':'off';
   if (personal) {
     const d=brief.discovery;
     $('side').classList.add('personal-side');
@@ -93,12 +102,16 @@ function render() {
   } else {
     const demoOnly=wall.profiles.length===1 && wall.profiles[0].id==='demo';
     $('side').classList.remove('personal-side');
-    $('side').innerHTML=`<div class="panel-head"><h2>我的简报</h2></div><p>确认身份后，查看你的天气、日程和关注内容。</p><button class="primary" id="manual">${demoOnly?'体验示例简报':'选择成员简报'}</button><div class="camera-control"><span class="statusline"><i class="indicator ${camera.active?'':'off'}"></i>${esc(cameraStatus())}</span><button class="textbtn" id="cam" ${starting?'disabled':''}>${camera.active?'关闭摄像头':'开启摄像头识别'}</button></div>`;
+    $('side').innerHTML=`<div class="panel-head"><h2>我的简报</h2></div><p>确认身份后，查看你的天气、日程和关注内容。</p><button class="primary" id="manual">${demoOnly?'体验示例简报':'选择成员简报'}</button><div class="camera-control"><span class="statusline"><i class="indicator ${camera.streaming?'':'off'}"></i>${esc(cameraStatus())}</span><button class="textbtn" id="cam" ${starting?'disabled':''}>${cameraButtonLabel()}</button></div>`;
     $('manual').onclick=()=>demoOnly ? confirmPerson(wall.profiles[0],'manual') : choose();
     $('cam').onclick=async()=>{
-      if (camera.active) { camera.stop(); localStorage.removeItem('morning.camera');cameraMessage=''; render(); }
-      else { try { await startCamera(); if (camera.active) { localStorage.setItem('morning.camera','on'); if (!wall.profiles.some(p=>enrolled(p.id))) notify('摄像头已开启。请在「成员与订阅」中录入本人。'); } }
-        catch(e){notify(e.message);} render(); }
+      if (camera.faceActive) {
+        if (gestureEnabled()) { camera.pauseFace(); render(); }
+        else { camera.stop(); localStorage.removeItem('morning.camera'); cameraMessage=''; render(); }
+        return;
+      }
+      try { await startCamera(); if (camera.faceActive) { localStorage.setItem('morning.camera','on'); if (!wall.profiles.some(p=>enrolled(p.id))) notify('摄像头已开启。请在「成员与订阅」中录入本人。'); } }
+      catch(e){notify(e.message);} render();
     };
   }
   showBoard(personal?.profile.id || 'public','',wall.running);
@@ -143,9 +156,12 @@ function confirmPerson(profile,via) {
   };
 }
 async function startCamera() {
-  if (camera.active) return;
+  if (camera.faceActive) return;
   starting=true;cameraMessage='';render();
-  try { await camera.start(); }
+  try {
+    if (camera.streaming) await camera.resumeFace();
+    else await camera.openCamera();
+  }
   catch(e) { cameraMessage=e.message;throw e; }
   finally { starting=false;render(); }
 }
@@ -231,7 +247,7 @@ document.addEventListener('fullscreenchange',()=>{const name=document.fullscreen
 $('sync').onclick=async()=>{try{wall=await api('/api/refresh',{});render();void dashboard.refresh();notify(wall.running?'机器人正在检查订阅源。':'刚刚已检查过订阅源。');}catch(e){notify(e.message);}};
 try {
   await loadWall();
-  if (localStorage.getItem('morning.camera')==='on') {
+  if (localStorage.getItem('morning.camera')==='on' || gestureEnabled()) {
     try {await startCamera();} catch(e) {notify(e.message);}
   }
 } catch(e){$('tiles').textContent='暂时无法读取简报，将自动重试。';notify(e.message);}

@@ -26,6 +26,7 @@ try {
   const p=await browser.newPage({viewport:{width:1440,height:1000}});
   const errors=[];p.on('pageerror',err=>errors.push(err.message));
   await p.emulateMedia({reducedMotion:'reduce'});
+  await p.addInitScript(() => { try { localStorage.setItem('morning.gesture.enabled', 'off'); } catch {} });
   await p.goto(url);
   await p.locator('.widget').first().waitFor();
   await p.evaluate(()=>document.fonts.ready);
