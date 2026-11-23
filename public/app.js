@@ -2,6 +2,8 @@ import { esc, collectReleases, weekCounts, focusCard, chartCard, topicPanels, ti
 import { Camera, enrolled, forget, remember, addSample } from './camera.js';
 import { coverMotion, showBoard } from './motion.js';
 import { createDashboard } from './dashboard.js';
+import { greet } from './avatar.js';
+import { resolveGestureAction } from './gesture-rules.js';
 
 const $ = id => document.getElementById(id);
 const fmt = (v, options) => new Intl.DateTimeFormat('zh-CN', options).format(new Date(v));
@@ -11,16 +13,51 @@ let wall, personal = null, dialog = '', candidate = null, editing = null, enroll
 let profileSequence = 0, sessionSequence = 0, wallSequence = 0, lastAction = Date.now(), lastSeen = 0;
 let consecutive = 0, lastMatch = null, ignored = null, absentSince = 0;
 let starting = false, noticeTimer, cameraMessage = '', lastRender = '';
+let gesture = null, gestureStarting = false, navAt = 0;
 const camera = new Camera(video, onFrame, error => {
   localStorage.removeItem('morning.camera');
   starting = false;
   cameraMessage = error;
+  gesture?.stop(); gesture = null;
   if (enrollment) { enrollment.collect = false; $('slot').dataset.capturing='false'; message(error); }
   if (personal?.via === 'camera' || candidate?.via === 'camera') home();
   render();
   notify(error);
 });
 const gestureEnabled = () => localStorage.getItem('morning.gesture.enabled') !== 'off';
+async function startGestures() {
+  if (gesture || gestureStarting || !gestureEnabled() || !camera.streaming) return;
+  gestureStarting = true;
+  try {
+    const { GestureEngine } = await import('/gesture.js');
+    let settings = {};
+    try { settings = JSON.parse(localStorage.getItem('morning.gesture.tuning') || '{}'); } catch { settings = {}; }
+    const engine = new GestureEngine(video, { onEvent: handleGesture, settings });
+    await engine.start();
+    if (!camera.streaming || !gestureEnabled()) { engine.stop(); return; }
+    gesture = engine;
+  } catch (e) {
+    console.warn('手势不可用', e);
+    gesture = null;
+  } finally {
+    gestureStarting = false;
+  }
+}
+function handleGesture(event) {
+  if (!wall || Date.now() - navAt < 300) return;
+  const action = resolveGestureAction(event, {
+    enabled: gestureEnabled(),
+    dialog,
+    candidateVia: candidate?.via,
+    personalVia: personal?.via,
+    faceActive: camera.faceActive,
+  });
+  if (action === 'confirm') $('yes')?.click();
+  else if (action === 'cancel') closeDialog();
+  else if (action === 'home') home();
+  else if (action === 'resumeFace') void startFace();
+  else if (action === 'greet') greet();
+}
 async function api(url, body) {
   const options = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
   const response = await fetch(url, options);
@@ -43,6 +80,7 @@ function setDialog(type, html) {
   else $('dialog-title')?.focus();
 }
 function closeDialog() {
+  navAt = Date.now();
   if (candidate?.via === 'camera') ignored = candidate.id;
   if (enrollment) {
     $('camera-stage').append(video);
@@ -57,6 +95,7 @@ $('close').onclick=closeDialog;
 modal.addEventListener('cancel',e=>{e.preventDefault(); closeDialog();render();});
 modal.addEventListener('click',e=>{if(e.target===modal){closeDialog();render();}});
 function home() {
+  navAt = Date.now();
   if (personal?.via === 'camera') ignored=personal.profile.id;
   sessionSequence++; personal=null; closeDialog(); render();
 }
@@ -134,6 +173,7 @@ function choose() {
   $('dialog-body').querySelectorAll('[data-member]').forEach(b=>b.onclick=()=>confirmPerson(wall.profiles.find(p=>p.id===b.dataset.member),'manual'));
 }
 function confirmPerson(profile,via) {
+  navAt = Date.now();
   candidate={ id:profile.id,via };
   if(via==='camera') lastSeen=Date.now();
   setDialog('confirm',`<h2 id="dialog-title">是${esc(profile.name)}吗？</h2><p>${via==='camera'?'摄像头匹配到这位成员。':'你手动选择了这位成员。'}确认后，个人简报将显示在公共大屏上。</p><div class="dialog-actions"><button id="no" class="secondary">取消</button><button id="yes" class="primary">是我，打开简报</button></div><div id="msg" role="status" class="msg"></div>`);
@@ -163,6 +203,18 @@ async function startCamera() {
     else await camera.openCamera();
   }
   catch(e) { cameraMessage=e.message;throw e; }
+  finally { starting=false;render(); }
+  if (camera.streaming && gestureEnabled()) void startGestures();
+}
+async function startFace() {
+  if (camera.faceActive) return;
+  if (!camera.streaming) {
+    try { await startCamera(); } catch(e) { notify(e.message); }
+    return;
+  }
+  starting=true;cameraMessage='';render();
+  try { await camera.resumeFace(); }
+  catch(e) { cameraMessage=e.message;notify(e.message); }
   finally { starting=false;render(); }
 }
 function onFrame({count,face,match}) {
@@ -247,9 +299,11 @@ document.addEventListener('fullscreenchange',()=>{const name=document.fullscreen
 $('sync').onclick=async()=>{try{wall=await api('/api/refresh',{});render();void dashboard.refresh();notify(wall.running?'机器人正在检查订阅源。':'刚刚已检查过订阅源。');}catch(e){notify(e.message);}};
 try {
   await loadWall();
+  if (camera.streaming && gestureEnabled()) void startGestures();
   if (localStorage.getItem('morning.camera')==='on' || gestureEnabled()) {
     try {await startCamera();} catch(e) {notify(e.message);}
   }
 } catch(e){$('tiles').textContent='暂时无法读取简报，将自动重试。';notify(e.message);}
 setInterval(()=>loadWall().catch(()=>{lastRender='';$('robot-text').textContent='等待本机服务';}),5000);
+window.addEventListener('pagehide',()=>{gesture?.stop();camera.stop();});
 

@@ -18,7 +18,8 @@ export async function showAvatar(id) {
     expressions=info.expressions;index=-1;cover.hidden=true;label.textContent=info.name;canvas.dataset.ready=id;playback();
   }catch {if(token===seq){label.textContent='静态预览';selected=null;}}
 }
-document.getElementById('avatar-greet').onclick=()=>{if(!player)return;player.act('nod');player.setExpression(expressions.find(e=>e.id==='smile')?.id||null);player.resize();};
+export function greet(){if(!player)return;player.act('nod');player.setExpression(expressions.find(e=>e.id==='smile')?.id||null);player.resize();}
+document.getElementById('avatar-greet').onclick=greet;
 document.getElementById('avatar-expression').onclick=()=>{if(!player)return;index=(index+1)%(expressions.length+1);player.setExpression(expressions[index]?.id||null);player.resize();};
 new MutationObserver(playback).observe(root,{attributes:true,attributeFilter:['data-motion','data-paused']});
 document.addEventListener('visibilitychange',playback);
