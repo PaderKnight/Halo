@@ -95,8 +95,16 @@ function registerPublic(folder) {
   for(const entry of fs.readdirSync(folder,{withFileTypes:true})){const file=path.join(folder,entry.name);if(entry.isDirectory())registerPublic(file);else if(/\.(js|css|html|json|webp|livliv|md)$/.test(file))staticFiles.set('/'+path.relative(path.join(root,'public'),file).split(path.sep).join('/'),path.relative(root,file));}
 }
 registerPublic(path.join(root,'public'));
+const mpPkg = path.join(root, 'node_modules/@mediapipe/tasks-vision');
+if (fs.existsSync(mpPkg)) {
+  staticFiles.set('/mediapipe/vision_bundle.mjs', path.relative(root, path.join(mpPkg, 'vision_bundle.mjs')));
+  for (const name of fs.readdirSync(path.join(mpPkg, 'wasm')))
+    staticFiles.set('/mediapipe/wasm/' + name, path.relative(root, path.join(mpPkg, 'wasm', name)));
+}
+staticFiles.set('/models/hand_landmarker.task', 'public/models/hand_landmarker.task');
 const types = { '.webp':'image/webp','.livliv':'application/octet-stream','.md':'text/plain; charset=utf-8', '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8',
-  '.jpg':'image/jpeg','.png':'image/png','.bin':'application/octet-stream','.json':'application/json' };
+  '.jpg':'image/jpeg','.png':'image/png','.bin':'application/octet-stream','.json':'application/json',
+  '.mjs':'text/javascript; charset=utf-8','.wasm':'application/wasm','.task':'application/octet-stream' };
 let lastManual = 0;
 const server = http.createServer(async (req,res) => {
   try {
@@ -109,7 +117,7 @@ const server = http.createServer(async (req,res) => {
       const file = path.join(root,staticFiles.get(route));
       if (!fs.existsSync(file)) return send(res,404,{error:'缺少本地文件，请运行 npm ci。'});
       res.writeHead(200, {'Content-Type':types[path.extname(file)],'Content-Length':fs.statSync(file).size,
-        'X-Content-Type-Options':'nosniff', 'Cache-Control':route.startsWith('/models/') || route==='/face-api.js' ? 'max-age=86400' : 'no-cache' });
+        'X-Content-Type-Options':'nosniff', 'Cache-Control':route.startsWith('/models/') || route.startsWith('/mediapipe/') || route === '/face-api.js' ? 'max-age=86400' : 'no-cache' });
       fs.createReadStream(file).on('error',()=>res.destroy()).pipe(res);
       return;
     }

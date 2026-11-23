@@ -8,10 +8,11 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/brief.test.mjs test/modules.test.mjs",
+    "test": "node --test test/brief.test.mjs test/modules.test.mjs test/assets.test.mjs",
     "test:browser": "node test/wall.mjs"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.2.3",
     "@vladmandic/face-api": "1.7.15",
     "fast-xml-parser": "5.12.1",
     "ical.js": "2.2.1"
