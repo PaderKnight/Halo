@@ -15,7 +15,7 @@
 - 服务只监听 `127.0.0.1`，不改 Host/Origin 校验。
 - 前端不得引入 CDN；MediaPipe 运行时与模型保持本地托管；不新增第三方依赖。
 - `morning.gesture.enabled` 缺省视为 on；值为 `'off'` 时不得启动指针、停留点击或翻页。
-- 现有手势默认值保持不变；新增默认值固定为：`pointerDwellMs:1000`、`pointerSmoothing:0.35`、`pointerLostMs:500`、`pointerCooldownMs:800`、`swipeMinDistance:0.18`、`swipeMaxMs:600`、`swipeMaxRise:0.12`、`swipeCooldownMs:700`、`swipeSuppressMs:300`、`swipeSettleMs:320`、`swipeSettleDistance:0.02`。
+- 现有手势默认值保持不变；新增默认值固定为：`pointStableFrames:3`、`pointerDwellMs:1000`、`pointerSmoothing:0.35`、`pointerLostMs:500`、`pointerCooldownMs:800`、`swipeMinDistance:0.18`、`swipeMaxMs:600`、`swipeMaxRise:0.12`、`swipeCooldownMs:700`、`swipeSuppressMs:300`、`swipeSettleMs:320`、`swipeSettleDistance:0.02`。
 - 存储键固定：`morning.gesture.tuning`、`morning.gesture.pointer`、`morning.camera.device`、`morning.camera.size`；不新增其他键。
 - 所有新增用户可见文案用简体中文，语气与现有界面一致。
 - 现有 Playwright 用例在加载前设置 `morning.gesture.enabled = 'off'`；新增用例同样不得依赖真实摄像头或真实手部。
@@ -189,7 +189,8 @@ Expected: FAIL，`mirrorX is not a function` 或 `point` 判定失败。
 
 - [ ] **Step 3: 实现 `public/gesture-rules.js`**
 
-- `DEFAULT_GESTURE_SETTINGS` 追加十一个新键，值见 Global Constraints。
+- `DEFAULT_GESTURE_SETTINGS` 追加十二个新键（含 `pointStableFrames`），值见 Global Constraints。
+- 新增纯逻辑 `PointStability`：`{ stableFrames = 3, minConfidence = 0.6 }`；`update({ pose, confidence })` 在连续达标时返回 `true`，非 `point` 或低置信度会清零计数；供 `GestureEngine` 生成 `pointer.active`。
 - `nullPose()` 追加 `tipX: NaN, tipY: NaN`。
 - `analyzeHand`：
   - 校验通过后取 `tipX = p[8].x`、`tipY = p[8].y`。
@@ -200,7 +201,8 @@ Expected: FAIL，`mirrorX is not a function` 或 `point` 判定失败。
   - 构造函数初始化 `swipeSuppressUntil = -Infinity`、`swipeCooldownUntil = -Infinity`、`_resetSwipe()`。
   - `push` 读取 `swipeX`、`palmY`（缺失为 `NaN`）。在 `pose === 'openPalm' && at < swipeSuppressUntil` 时重置 run、重置滑动窗口并返回 `[]`。
   - 先算 `waving`。滑动分支必须同时满足 `pose === 'openPalm'`、`!waving`、`confidence >= minConfidence`；否则重置滑动窗口。满足时调用 `_noteSwipe(at, swipeX, palmY)`。
-  - `_noteSwipe` 返回 `swipeRight`/`swipeLeft` 时，重置 run 与 wave 窗口，设 `swipeSuppressUntil = at + swipeSuppressMs`、`swipeCooldownUntil = at + swipeCooldownMs`，返回事件。滑动事件不占用通用 `cooldownUntil`。
+  - `_noteSwipe` 返回 `swipeRight`/`swipeLeft` 时，重置 run 与 wave 窗口，设 `swipeSuppressUntil = at + swipeSuppressMs`、`swipeCooldownUntil = at + swipeCooldownMs`，返回事件。滑动事件不占用通用冷却。
+  - 通用冷却按手势类型独立记录（`wave`/`openPalm`/`fist`/`thumbsUp`）并在该类型触发后设置 `at + cooldownMs`；因此被当前上下文忽略的手势不会阻塞随后改变状态的手势。
   - 挥手事件额外把 `swipeSuppressUntil` 设为 `at + swipeSuppressMs`，并重置滑动窗口。
   - 非 `openPalm`、空姿势或置信度不足时重置滑动窗口。
   - `_noteSwipe`：
@@ -588,11 +590,13 @@ Expected: 现有四个浏览器用例与新增用例全部通过。不要提交�
 - Modify: `public/app.js`
 - Modify: `public/index.html`（加入 `#gesture-cursor`）
 - Modify: `public/dashboard.css`（光标、悬停、提示）
+- Modify: `public/pointer-rules.js`（新增 `DwellFistGuard`）
+- Test: `test/pointer.test.mjs`（追加 `DwellFistGuard` 用例）
 - Test: `test/info-window.mjs`（补光标存在性断言）
 
 **Interfaces:**
-- Consumes: `mapToScreen`、`PointerController`、`pointerContextAllowed`、`isCalibrationCurrent`（Task 2）；`onFrame.pointer`（Task 3）；`resolveGestureAction` 的 `closeInfo/pageNext/pagePrev`（Task 1）；`dashboard.openInfo/flipPage`（Task 4）。
-- Produces: 用户可见的指针对话；`morning.gesture.pointer` 读取与摄像头指纹校验。
+- Consumes: `mapToScreen`、`PointerController`、`pointerContextAllowed`、`isCalibrationCurrent`、`DwellFistGuard`（Task 2 / 本任务新增）；`onFrame.pointer`（Task 3）；`resolveGestureAction` 的 `closeInfo/pageNext/pagePrev`（Task 1）；`dashboard.openInfo/flipPage`（Task 4）。
+- Produces: 用户可见的指针对话；`morning.gesture.pointer` 读取与摄像头指纹校验；`DwellFistGuard` 的停留-握拳消费。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -611,10 +615,34 @@ assert.equal(await p.locator('#gesture-cursor').isVisible(),false);
 assert.equal(await p.locator('#gesture-cursor').isVisible(),false);
 ```
 
+把 `DwellFistGuard` 加入 `test/pointer.test.mjs` 现有 import，并追加（模拟引擎先 `onFrame` 再 `onEvent` 的顺序）：
+
+```js
+test('fist during dwell is consumed after the pointer goes inactive', () => {
+  const g = new DwellFistGuard();
+  g.frame({ pose: 'point', progress: 0.5, at: 0 });
+  g.frame({ pose: 'fist', progress: 0, at: 80 });
+  g.frame({ pose: 'fist', progress: 0, at: 680 });
+  assert.equal(g.event({ type: 'fist', dialog: '', at: 700 }), true);
+  assert.equal(g.event({ type: 'fist', dialog: '', at: 8000 }), false);
+});
+test('fist without a dwell is not consumed', () => {
+  const g = new DwellFistGuard();
+  g.frame({ pose: 'fist', progress: 0, at: 0 });
+  assert.equal(g.event({ type: 'fist', dialog: '', at: 700 }), false);
+});
+test('fist in the info dialog is not consumed as a dwell cancel', () => {
+  const g = new DwellFistGuard();
+  g.frame({ pose: 'point', progress: 0.5, at: 0 });
+  g.frame({ pose: 'fist', progress: 0, at: 80 });
+  assert.equal(g.event({ type: 'fist', dialog: 'info', at: 700 }), false);
+});
+```
+
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `node test/info-window.mjs`
-Expected: FAIL，`#gesture-cursor` 不存在。
+Run: `node --test test/pointer.test.mjs && node test/info-window.mjs`
+Expected: FAIL，`DwellFistGuard` 未导出，且 `#gesture-cursor` 不存在。
 
 - [ ] **Step 3: 实现 `public/index.html`**
 
@@ -626,31 +654,34 @@ Expected: FAIL，`#gesture-cursor` 不存在。
 
 - [ ] **Step 4: 实现 `public/app.js`**
 
-- 导入 `mapToScreen, PointerController, pointerContextAllowed, isCalibrationCurrent`。
-- 状态：`let pointer = null, pointerSettings = null, hoverEl = null, pointerState = null;`
+- 导入 `mapToScreen, PointerController, pointerContextAllowed, isCalibrationCurrent, DwellFistGuard`。
+- 状态：`let pointer = null, pointerSettings = null, hoverEl = null, pointerState = null, fistGuard = null;`
+- 在 `public/pointer-rules.js` 增加 `DwellFistGuard`：`frame({pose, progress, at})` 在 `progress > 0` 时记录 `dwellAt`；`pose === 'fist'` 且距 `dwellAt` 在 `graceMs`（默认 1600ms）内时置 `pending`；`pose !== 'fist'` 清除 `pending`。`event({type, dialog, at})` 仅在 `type === 'fist'`、`dialog !== 'info'` 且 `pending` 或宽限期内返回 `true` 并 `reset()`。这样即使 fist 事件晚于指针归零，也能消费。
 - `cursor = $('gesture-cursor')`。
 - `loadPointerSettings()`：读 `morning.gesture.pointer`；`mirror` 缺省 true；标定六项均为有限数才有效；用 `isCalibrationCurrent(saved.camera, currentFingerprint())` 校验，失败则 `console.warn` 并置 `calibration = null`。`currentFingerprint()` 返回 `{ device: localStorage.getItem('morning.camera.device') || '', size: localStorage.getItem('morning.camera.size') || '1280x720' }`。
 - `startGestures()`：
   - 读取当前 `morning.gesture.tuning` 后 `pointerSettings = loadPointerSettings()`。
-  - 创建控制器 `pointer = new PointerController({ settings })`（失败时置空）。
-  - 构造引擎时传 `onFrame: handleGestureFrame`、`onStop: stopPointerVisuals`、`settings: { ...settings, mirror: pointerSettings.mirror }`。
+  - 创建控制器 `pointer = new PointerController({ settings })` 与 `fistGuard = new DwellFistGuard()`（失败时置空）。
+  - 构造引擎时传 `onFrame: handleGestureFrame`、`onStop: () => { stopPointerVisuals(); if (gesture === engine) gesture = null; render(); }`、`settings: { ...settings, mirror: pointerSettings.mirror }`。
 - `handleGestureFrame(payload)`：
   - 若 `!pointer || !pointerSettings || !pointerContextAllowed({ dialog, enabled: gestureEnabled(), streaming: camera.streaming })`，调用 `stopPointerVisuals()` 并返回。
   - 若 `Date.now() - navAt < 300`，调用 `stopPointerVisuals()` 并返回，避免状态切换瞬间的停留进度延续。
   - 指针活跃且坐标有限时：`mapToScreen` → 视口像素（`norm.x * (innerWidth - 1)`、`norm.y * (innerHeight - 1)`）→ `document.elementFromPoint` → `resolvePointerTarget`。
   - 调用 `pointer.update({ x, y, active, at, target })`，保存 `pointerState`，`renderPointer(result, target)`；`result.click` 时 `activatePointerTarget(target)`。
+  - 同一帧调用 `fistGuard?.frame({ pose: payload?.pose, progress: result.progress, at })`；引擎先发 `onFrame` 再发 `onEvent`，这一调用负责在指针归零前记录“曾经在停留”。
 - `resolvePointerTarget(el)`：
-  - `[data-gesture-item]` → 解析 `kind:moduleId:index`，返回 `{ type:'item', moduleId, index:Number(index), key:'item:'+moduleId+':'+index, element }`。
-  - `[data-gesture-card]` → `{ type:'card', moduleId, index:0, key:'card:'+moduleId, element }`。
-  - `dialog === 'info'` 时 `[data-gesture-key]` → `{ type:'info', key, element }`。
-  - 否则 `null`。
+  - `dialog === 'info'` 时只解析 `[data-gesture-key]` → `{ type:'info', key, element }`；找不到返回 `null`，不解析遮罩后的背景卡片/条目。
+  - `dialog === ''` 时依次解析 `[data-gesture-item]` → `[data-gesture-card]`：
+    - item → 解析 `kind:moduleId:index`，返回 `{ type:'item', moduleId, index:Number(index), key:'item:'+moduleId+':'+index, element }`。
+    - card → `{ type:'card', moduleId, index:0, key:'card:'+moduleId, element }`。
+  - 其他 dialog 返回 `null`。
 - `activatePointerTarget(target)`：`navAt = Date.now(); pointer?.reset(); hideCursor();`；`type === 'info'` 时 `target.element.click()`，否则 `dashboard.openInfo(target.moduleId, target.index)`。
-- `renderPointer(result, target)`：不可见时 `hideCursor()`；否则 `showCursor()`、设置 `transform: translate3d(x px, y px, 0)`、`--progress`、`dwelling` 类；目标键存在时给 `target.element` 加 `.gesture-hover`，无目标时清除。
-- `showCursor()` / `hideCursor()`：`showPopover()` / `hidePopover()` 前后用 `hidden` 与 `:popover-open` 守卫；`hideCursor` 清除悬停与 `pointerState`。
-- `stopPointerVisuals()`：`pointer?.reset(); pointerState = null; hideCursor();`
-- `setDialog()` 和 `closeDialog()` 中调用 `hideCursor(); pointer?.reset();`，避免状态切换瞬间误点。
+- `renderPointer(result, target)`：不可见时 `hideCursor()`；否则 `showCursor()`、设置 `transform: translate3d(x px, y px, 0)`、`--progress`；目标键存在时给 `target.element` 加 `.gesture-hover`，无目标时清除。
+- `showCursor()` / `hideCursor()`：`showPopover()` / `hidePopover()` 前后用 `hidden` 与 `:popover-open` 守卫；`showPopover()` 失败只 `console.warn` 一次并停用后续警告，避免 12.5fps 刷屏；`hideCursor` 清除悬停与 `pointerState`。
+- `stopPointerVisuals()`：`pointer?.reset(); fistGuard?.reset(); pointerState = null; hideCursor();`
+- `setDialog()` 和 `closeDialog()` 中调用 `hideCursor(); pointer?.reset(); fistGuard?.reset();`，避免状态切换瞬间误点。
 - `handleGesture()`：
-  - 在 300ms 守卫之后，若 `event.type === 'fist' && dialog !== 'info' && pointerState?.progress > 0`，只做 `stopPointerVisuals()` 并返回。
+  - 在 300ms 守卫之后，若 `event.type === 'fist' && fistGuard?.event({ type: event.type, dialog, at: event.at })`，只做 `stopPointerVisuals()` 并返回。Guard 内部已限定 `dialog !== 'info'`；信息窗内仍走 `closeInfo`。
   - 动作分发追加：`pageNext → dashboard.flipPage(1)`、`pagePrev → dashboard.flipPage(-1)`、`closeInfo → closeDialog()`；翻页后 `pointer?.reset()`。
 - `camera` 的错误回调、`pagehide`、`startGestures` 的 catch 都调用 `stopPointerVisuals()`。
 - `render()` 的成员面板两个分支都追加手势提示：
@@ -669,8 +700,8 @@ Expected: FAIL，`#gesture-cursor` 不存在。
 
 - [ ] **Step 6: 运行测试确认通过**
 
-Run: `node test/info-window.mjs && npm run test:browser`
-Expected: 全部通过；手势关闭时页面不出现可见光标，光标元素存在且带 `popover="manual"`。
+Run: `node --test test/pointer.test.mjs && node test/info-window.mjs && npm run test:browser && npm test`
+Expected: 全部通过；手势关闭时页面不出现可见光标，光标元素存在且带 `popover="manual"`；`DwellFistGuard` 三个用例通过。
 
 - [ ] **Step 7: Checkpoint**
 
@@ -684,15 +715,18 @@ Expected: 全部通过；手势关闭时页面不出现可见光标，光标元�
 - Modify: `public/debug.html`
 - Modify: `public/debug.css`
 - Modify: `public/debug.js`
+- Modify: `public/pointer-rules.js`（新增 `calibrationWindow`）
 - Test: `test/debug.mjs`
+- Test: `test/pointer.test.mjs`（追加 `calibrationWindow` 用例）
 
 **Interfaces:**
-- Consumes: `mapToScreen`、`solveAffine`、`isCalibrationCurrent`（Task 2）；`onFrame.pointer`（Task 3）。
+- Consumes: `mapToScreen`、`solveAffine`、`isCalibrationCurrent`、`calibrationWindow`（Task 2 / 本任务新增）；`onFrame.pointer`（Task 3）。
 - Produces:
   - 滑杆 `#gesture-pointer-dwell`（`pointerDwellMs`）、`#gesture-swipe-distance`（`swipeMinDistance`）。
   - 镜像开关 `#pointer-mirror`、标定按钮 `#pointer-calibrate`、清除按钮 `#pointer-clear`、测试开关 `#pointer-test`、状态 `#pointer-status`。
-  - 标定层 `#calibration` 与目标点；调试光标 `#debug-cursor`。
+  - 标定层 `#calibration` 与目标点、覆盖层可见状态 `#calibration-status`；调试光标 `#debug-cursor`。
   - `morning.gesture.pointer = { mirror, calibration, camera: { device, size }, updatedAt }`。
+  - `calibrationWindow(samples, { at, windowMs, requiredMs = 800, maxSpread = 0.05, minSamples = 3 })`，返回 `{ kept, span, spread, ready, progress }`。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -719,10 +753,36 @@ assert.equal(await page.locator('#pointer-test').isChecked(),true);
 assert.equal(await page.locator('#debug-cursor').isVisible(),false);
 ```
 
+把 `calibrationWindow` 加入 `test/pointer.test.mjs` 现有 import，并追加：
+
+```js
+test('calibration window ages out pre-corner movement and becomes ready', () => {
+  const samples = [
+    { x: .1, y: .1, at: 0 }, { x: .5, y: .5, at: 200 }, { x: .5, y: .5, at: 600 },
+    { x: .5, y: .5, at: 1000 }, { x: .5, y: .5, at: 1400 }, { x: .5, y: .5, at: 1800 },
+  ];
+  const state = calibrationWindow(samples, { at: 1800, windowMs: 1200, requiredMs: 800, maxSpread: .05 });
+  assert.equal(state.ready, true);
+  assert.equal(state.spread, 0);
+});
+test('calibration window needs three samples and 800ms', () => {
+  const at = 800;
+  assert.equal(calibrationWindow([{ x: .5, y: .5, at: 800 }], { at, windowMs: 1200 }).ready, false);
+  assert.equal(calibrationWindow(
+    [{ x: .5, y: .5, at: 0 }, { x: .5, y: .5, at: 800 }], { at, windowMs: 1200 },
+  ).ready, false);
+});
+test('calibration window stays satisfiable at a 1000ms interval', () => {
+  const samples = [0, 1000, 2000, 3000].map(t => ({ x: .5, y: .5, at: t }));
+  const state = calibrationWindow(samples, { at: 3000, windowMs: 3100, requiredMs: 800, maxSpread: .05 });
+  assert.equal(state.ready, true);
+});
+```
+
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `node test/debug.mjs`
-Expected: FAIL，`#gesture-pointer-dwell` 不存在。
+Run: `node --test test/pointer.test.mjs && node test/debug.mjs`
+Expected: FAIL，`calibrationWindow` 未导出，且 `#gesture-pointer-dwell` 不存在。
 
 - [ ] **Step 3: 实现 `public/debug.html`**
 
@@ -747,11 +807,12 @@ Expected: FAIL，`#gesture-pointer-dwell` 不存在。
   <button type="button" id="pointer-calibrate">四点标定</button>
   <button type="button" id="pointer-clear">清除标定</button>
   <label class="switch"><input type="checkbox" id="pointer-test"> 测试指针</label>
-  <span id="pointer-status" class="hint" role="status">未标定</span>
+  <span id="pointer-status" class="hint">未标定</span>
 </div>
 <div id="calibration" class="calibration" hidden>
   <div class="calibration-card">
     <p id="calibration-step">点击角落圆点，保持食指指向 1 秒</p>
+    <p id="calibration-status" class="hint" role="status"></p>
     <div class="calibration-progress"><i id="calibration-bar"></i></div>
     <button type="button" id="calibration-cancel">取消（Esc）</button>
   </div>
@@ -765,7 +826,8 @@ Expected: FAIL，`#gesture-pointer-dwell` 不存在。
 
 - [ ] **Step 4: 实现 `public/debug.js`**
 
-- 导入 `mapToScreen, solveAffine, isCalibrationCurrent`。
+- 导入 `mapToScreen, solveAffine, isCalibrationCurrent, calibrationWindow`。
+- 在 `public/pointer-rules.js` 增加 `calibrationWindow(samples, { at, windowMs, requiredMs = 800, maxSpread = 0.05, minSamples = 3 })`：只保留 `at - sample.at <= windowMs` 的点；返回 `{ kept, span, spread, ready, progress }`；`span = last.at - first.at`，`spread = max(maxX-minX, maxY-minY)`，`ready = kept.length >= minSamples && span >= requiredMs && spread <= maxSpread`，`progress = min(1, span / requiredMs)`。
 - 新增 `POINTER_KEY = 'morning.gesture.pointer'`、`let pointerSettings = loadPointerSettings()`、`let calibration = null`、`let testPointer = false`。
 - `loadPointerSettings()` / `persistPointerSettings()`：读写 `{ mirror, calibration, camera: { device, size }, updatedAt }`；`camera` 取 `localStorage.getItem(DEVICE_KEY) || ''` 与 `localStorage.getItem(SIZE_KEY) || '1280x720'`。
 - `gestureInputs` 追加 `pointerDwellMs`、`swipeMinDistance`；`GESTURE_LABELS` 追加 `point:'指向'`、`swipeLeft:'左滑'`、`swipeRight:'右滑'`。
@@ -775,12 +837,13 @@ Expected: FAIL，`#gesture-pointer-dwell` 不存在。
   - 若 `testPointer` 且 `payload?.pointer?.active`，用 `mapToScreen` 定位 `#debug-cursor` 并显示；否则隐藏。
 - 标定：
   - 四角屏幕比例固定为 `{x:.08,y:.08}`、`{x:.92,y:.08}`、`{x:.92,y:.92}`、`{x:.08,y:.92}`。
-  - 每个角收集最近 800ms 的原始指尖点；跨度 ≤0.05 且时长 ≥800ms 时取平均，写入 `{ rawX, rawY, screenX, screenY }`，进入下一角。
+  - 每个角每帧计算 `windowMs = Math.max(1200, (gestureTuning.intervalMs || 80) * 3 + 100)`，调用 `calibrationWindow(session.samples, { at: stamp, windowMs, requiredMs: 800, maxSpread: 0.05 })`；把 `session.samples` 替换为 `state.kept`，进度条用 `state.progress`。`state.ready` 时取 `state.kept` 平均，写入 `{ rawX, rawY, screenX, screenY }`，进入下一角。早期移动会随窗口滑出，不会永久污染 spread；帧间隙超过窗口时 kept 为空并自动重新累计；1000ms 间隔下窗口为 3100ms。
   - 四角完成后 `solveAffine(pairs, pointerSettings.mirror)`；成功则写入 `calibration`、`camera`、`updatedAt` 并持久化，关闭标定层，状态“标定已保存，刷新主屏生效”；失败显示“标定失败，请重试”。
   - 手势未启动或指针不活跃时不采集，状态提示“等待手势数据”。
   - `Escape` 或取消按钮关闭标定层并清空会话。
+- `setPointerStatus(text)`：写入 `#pointer-status` 与覆盖层内的 `#calibration-status`，每次赋值前比较 `textContent`，避免每帧重写 live region；只有 `#calibration-status` 带 `role="status"`。
 - 镜像开关变化：更新 `pointerSettings.mirror`、`calibration = null`、持久化、`engine?.updateSettings({ mirror })`，状态提示“标定已清除，请重新标定”。
-- 清除标定：`calibration = null`、持久化、状态“已清除标定”。
+- 清除标定：`calibration = null`、`camera = { device: '', size: '1280x720' }`、`updatedAt = null`、持久化、状态“已清除标定”。
 - 加载时：有标定且 `isCalibrationCurrent(pointerSettings.camera, currentFingerprint())` 为真 → “已标定”；否则 → “摄像头已变化，请重新标定”。
 - `boot()` 中同步 `#pointer-mirror.checked = pointerSettings.mirror`、`#pointer-test.checked = false`，并按上面的规则写入 `#pointer-status` 初始文案。
 - 在 `onGestureEvent` 中，`GESTURE_LABELS` 已覆盖滑动类型，无需额外逻辑。
@@ -794,17 +857,17 @@ Expected: FAIL，`#gesture-pointer-dwell` 不存在。
 .calibration-card { text-align:center;max-width:22rem;padding:1.2rem;border:1px solid #ffffff26;border-radius:16px;background:#1a2c43; }
 .calibration-progress { height:4px;background:#ffffff1f;border-radius:2px;margin:14px 0;overflow:hidden; }
 .calibration-progress i { display:block;height:100%;width:0;background:#cfe6ff;transition:width 80ms linear; }
-.calibration-target { position:absolute;width:28px;height:28px;border:2px solid #cfe6ff;border-radius:50%;box-shadow:0 0 18px #cfe6ff66; }
-.calibration-target.c0 { left:8%;top:8%; }.calibration-target.c1 { right:8%;top:8%; }
-.calibration-target.c2 { right:8%;bottom:8%; }.calibration-target.c3 { left:8%;bottom:8%; }
+.calibration-target { position:absolute;width:28px;height:28px;border:2px solid #cfe6ff;border-radius:50%;box-shadow:0 0 18px #cfe6ff66;transform:translate(-50%,-50%); }
+.calibration-target.c0 { left:8%;top:8%; }.calibration-target.c1 { left:92%;top:8%; }
+.calibration-target.c2 { left:92%;top:92%; }.calibration-target.c3 { left:8%;top:92%; }
 #debug-cursor { position:fixed;left:0;top:0;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:#cfe6ff;box-shadow:0 0 14px #cfe6ff;pointer-events:none;z-index:60; }
 #debug-cursor[hidden] { display:none; }
 ```
 
 - [ ] **Step 6: 运行测试确认通过**
 
-Run: `node test/debug.mjs`
-Expected: PASS。
+Run: `node --test test/pointer.test.mjs && node test/debug.mjs`
+Expected: PASS；标定窗口三个用例通过。
 
 - [ ] **Step 7: Checkpoint**
 
@@ -867,5 +930,5 @@ Expected: `wall.mjs`、`camera.mjs`、`debug.mjs`、`info-window.mjs`、`wall-ge
 
 - **Spec 覆盖**：设计 §5.1 上下文守卫 → Task 5；§5.2 指针 → Task 2/5；§5.3 命中 → Task 4/5；§5.4 信息窗 → Task 4；§5.5 手势与动作 → Task 1/5；§5.6 提示 → Task 5；§6 判据与参数 → Task 1/2；§7 架构/接口/存储/属性 → Task 1-6；§8 调试页 → Task 6；§9 测试 → Task 1/2/4/5/6/7；§10 风险 → Review Focus 与各任务测试。
 - **类型一致性**：`PointerController.update({x,y,active,at,target})`、`target {key, inside}`、`mapToScreen` 原始坐标、`solveAffine(pairs, mirror)`、`openInfo(moduleId,index)`、`flipPage(delta)`、`infoState()` 在所有任务中保持一致。
-- **Review Focus 对应测试**：摄像头指纹 → `isCalibrationCurrent` 单测 + Task 5 生效逻辑；抖动/丢失 → `PointerController` 单测；滑动/挥手 → Task 1 的静止确认、无方向反转、幅度 ≥0.19 与置信度单测；popover 光标 → Task 5 浏览器断言；非信息窗禁用 → `pointerContextAllowed` 单测；空模块 → Task 4 天气单页用例；个人简报握拳 → Task 5 代码守卫 + Task 7 手测。
+- **Review Focus 对应测试**：摄像头指纹 → `isCalibrationCurrent` 单测 + Task 5 生效逻辑；抖动/丢失 → `PointerController` 单测；滑动/挥手 → Task 1 的静止确认、无方向反转、幅度 ≥0.19 与置信度单测；popover 光标 → Task 5 浏览器断言；非信息窗禁用 → `pointerContextAllowed` 单测；空模块 → Task 4 天气单页用例；个人简报握拳 → `DwellFistGuard` 单测 + Task 7 手测；信息窗背景命中 → Task 5 的 `resolvePointerTarget` 上下文分支。
 - **未覆盖的取舍**：标定采集的 800ms、跨度 0.05 与四角 8% 边距由实施者按手测微调；光标圆点/环的视觉细节由实施者按现有色板定；`pointerDwellMs` 等滑杆范围以调试页实际手感为准。

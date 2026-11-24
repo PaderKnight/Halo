@@ -133,11 +133,39 @@
           <input id="gesture-interval-ms" type="range" min="40" max="1000" step="10" value="80">
           <output for="gesture-interval-ms">80</output>
         </label>
+        <label>指针停留
+          <input id="gesture-pointer-dwell" type="range" min="300" max="2500" step="50" value="1000">
+          <output for="gesture-pointer-dwell">1000</output>
+        </label>
+        <label>翻页滑动距离
+          <input id="gesture-swipe-distance" type="range" min="0.08" max="0.35" step="0.01" value="0.18">
+          <output for="gesture-swipe-distance">0.18</output>
+        </label>
+      </div>
+      <div class="row pointer-row">
+        <label class="switch"><input type="checkbox" id="pointer-mirror" checked> 镜像</label>
+        <button type="button" id="pointer-calibrate">四点标定</button>
+        <button type="button" id="pointer-clear">清除标定</button>
+        <label class="switch"><input type="checkbox" id="pointer-test"> 测试指针</label>
+        <span id="pointer-status" class="hint">未标定</span>
       </div>
       <div class="row">
         <button type="button" id="gesture-export">导出当前帧</button>
       </div>
       <ol id="gesture-log"></ol>
+      <div id="calibration" class="calibration" hidden>
+        <div class="calibration-card">
+          <p id="calibration-step">点击角落圆点，保持食指指向 1 秒</p>
+          <p id="calibration-status" class="hint" role="status"></p>
+          <div class="calibration-progress"><i id="calibration-bar"></i></div>
+          <button type="button" id="calibration-cancel">取消（Esc）</button>
+        </div>
+        <span class="calibration-target c0" data-corner="0"></span>
+        <span class="calibration-target c1" data-corner="1"></span>
+        <span class="calibration-target c2" data-corner="2"></span>
+        <span class="calibration-target c3" data-corner="3"></span>
+      </div>
+      <div id="debug-cursor" hidden></div>
     </section>
   </div>
   <script type="module" src="/debug.js"></script>

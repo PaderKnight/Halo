@@ -80,8 +80,77 @@ export function isCalibrationCurrent(savedCamera, currentCamera) {
   return saved.device === current.device && saved.size === current.size;
 }
 
+export function calibrationWindow(samples, {
+  at,
+  windowMs,
+  requiredMs = 800,
+  maxSpread = 0.05,
+  minSamples = 3,
+} = {}) {
+  const now = Number.isFinite(at) ? at : 0;
+  const width = Number.isFinite(windowMs) ? windowMs : 0;
+  const list = Array.isArray(samples) ? samples : [];
+  // Only points inside the trailing window survive; early movement ages out.
+  const kept = list.filter(sample => sample != null
+    && Number.isFinite(sample.at)
+    && now - sample.at <= width);
+  if (!kept.length) return { kept, span: 0, spread: 0, ready: false, progress: 0 };
+
+  const span = kept[kept.length - 1].at - kept[0].at;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const sample of kept) {
+    if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) continue;
+    minX = Math.min(minX, sample.x);
+    maxX = Math.max(maxX, sample.x);
+    minY = Math.min(minY, sample.y);
+    maxY = Math.max(maxY, sample.y);
+  }
+  const spread = Number.isFinite(minX)
+    ? Math.max(maxX - minX, maxY - minY)
+    : 0;
+  const required = Number.isFinite(requiredMs) ? requiredMs : 800;
+  const threshold = Number.isFinite(maxSpread) ? maxSpread : 0.05;
+  const ready = kept.length >= minSamples && span >= required && spread <= threshold;
+  const progress = required > 0 ? Math.min(1, span / required) : 1;
+  return { kept, span, spread, ready, progress };
+}
+
 export function pointerContextAllowed({ dialog = '', enabled = true, streaming = false } = {}) {
   return enabled !== false && streaming === true && (!dialog || dialog === 'info');
+}
+
+export class DwellFistGuard {
+  constructor({ graceMs = 1600 } = {}) {
+    this.graceMs = Number.isFinite(graceMs) && graceMs >= 0 ? graceMs : 1600;
+    this.reset();
+  }
+
+  reset() {
+    this.dwellAt = -Infinity;
+    this.pending = false;
+  }
+
+  frame({ pose = null, progress = 0, at = 0 } = {}) {
+    const now = Number.isFinite(at) ? at : 0;
+    if (Number.isFinite(progress) && progress > 0) this.dwellAt = now;
+    if (pose === 'fist') {
+      if (now - this.dwellAt <= this.graceMs) this.pending = true;
+    } else {
+      this.pending = false;
+    }
+  }
+
+  event({ type = '', dialog = '', at = 0 } = {}) {
+    if (type !== 'fist') return false;
+    const now = Number.isFinite(at) ? at : 0;
+    const duringDwell = this.pending || now - this.dwellAt <= this.graceMs;
+    if (!duringDwell) return false;
+    this.reset();
+    return dialog !== 'info';
+  }
 }
 
 export class PointerController {

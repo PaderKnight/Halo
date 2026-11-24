@@ -4,7 +4,7 @@ import { coverMotion, showBoard } from './motion.js';
 import { createDashboard } from './dashboard.js';
 import { greet } from './avatar.js';
 import { resolveGestureAction } from './gesture-rules.js';
-import { mapToScreen, PointerController, pointerContextAllowed, isCalibrationCurrent } from './pointer-rules.js';
+import { mapToScreen, PointerController, pointerContextAllowed, isCalibrationCurrent, DwellFistGuard } from './pointer-rules.js';
 
 const $ = id => document.getElementById(id);
 const fmt = (v, options) => new Intl.DateTimeFormat('zh-CN', options).format(new Date(v));
@@ -15,7 +15,8 @@ let profileSequence = 0, sessionSequence = 0, wallSequence = 0, lastAction = Dat
 let consecutive = 0, lastMatch = null, ignored = null, absentSince = 0;
 let starting = false, noticeTimer, cameraMessage = '', lastRender = '';
 let gesture = null, gestureStarting = false, navAt = 0;
-let pointer = null, pointerSettings = null, hoverEl = null, pointerState = null, pointerCoolingUntil = 0;
+let pointer = null, pointerSettings = null, hoverEl = null, pointerState = null, fistGuard = null;
+let pointerCoolingUntil = 0, cursorWarned = false;
 const cursor = $('gesture-cursor');
 const camera = new Camera(video, onFrame, error => {
   localStorage.removeItem('morning.camera');
@@ -55,14 +56,11 @@ function loadPointerSettings() {
   } else if (raw) {
     console.warn('手势指针标定数据无效，已回退默认映射。');
   }
-  return {
-    mirror,
-    calibration,
-    camera: saved.camera && typeof saved.camera === 'object' ? saved.camera : null,
-  };
+  return { mirror, calibration };
 }
 function stopPointerVisuals() {
   pointer?.reset();
+  fistGuard?.reset();
   pointerState = null;
   hideCursor();
 }
@@ -72,7 +70,10 @@ function showCursor() {
   try {
     if (!cursor.matches(':popover-open')) cursor.showPopover();
   } catch (error) {
-    console.warn('手势光标不可用', error);
+    if (!cursorWarned) {
+      cursorWarned = true;
+      console.warn('手势光标不可用', error);
+    }
   }
 }
 function hideCursor() {
@@ -81,13 +82,20 @@ function hideCursor() {
     if (cursor.matches(':popover-open')) cursor.hidePopover();
   } catch { /* popover state already closed */ }
   cursor.hidden = true;
-  cursor.classList.remove('dwelling');
   cursor.style.setProperty('--progress', '0');
   if (hoverEl) { hoverEl.classList.remove('gesture-hover'); hoverEl = null; }
   pointerState = null;
 }
 function resolvePointerTarget(element) {
   if (!element || typeof element.closest !== 'function') return null;
+  if (dialog === 'info') {
+    const keyed = element.closest('[data-gesture-key]');
+    if (keyed && keyed.dataset.gestureKey) {
+      return { type: 'info', key: keyed.dataset.gestureKey, element: keyed };
+    }
+    return null;
+  }
+  if (dialog !== '') return null;
   const item = element.closest('[data-gesture-item]');
   if (item) {
     const [kind, moduleId, pageIndex] = (item.dataset.gestureItem || '').split(':');
@@ -101,12 +109,6 @@ function resolvePointerTarget(element) {
     const moduleId = card.dataset.gestureCard;
     if (moduleId) return { type: 'card', moduleId, index: 0, key: 'card:' + moduleId, element: card };
   }
-  if (dialog === 'info') {
-    const keyed = element.closest('[data-gesture-key]');
-    if (keyed && keyed.dataset.gestureKey) {
-      return { type: 'info', key: keyed.dataset.gestureKey, element: keyed };
-    }
-  }
   return null;
 }
 function renderPointer(result, target) {
@@ -117,7 +119,6 @@ function renderPointer(result, target) {
   const cooling = performance.now() < pointerCoolingUntil;
   const progress = cooling ? 0 : Math.min(1, Math.max(0, Number.isFinite(result.progress) ? result.progress : 0));
   cursor.style.setProperty('--progress', String(progress));
-  cursor.classList.toggle('dwelling', Boolean(result.key));
   const next = result.key && target && target.element ? target.element : null;
   if (hoverEl !== next) {
     if (hoverEl) hoverEl.classList.remove('gesture-hover');
@@ -151,6 +152,8 @@ function handleGestureFrame(frame) {
   }
   const result = pointer.update({ x, y, active: usable, at, target: target ? { key: target.key, inside: true } : null });
   pointerState = result;
+  // The engine sends onFrame before onEvent; record a dwell before the fist frame zeroes it.
+  fistGuard?.frame({ pose: frame?.pose, progress: result.progress, at });
   if (result.click) {
     const cooldown = Number.isFinite(pointer.settings?.pointerCooldownMs) ? pointer.settings.pointerCooldownMs : 800;
     pointerCoolingUntil = at + cooldown;
@@ -166,12 +169,12 @@ async function startGestures() {
     let settings = {};
     try { settings = JSON.parse(localStorage.getItem('morning.gesture.tuning') || '{}'); } catch { settings = {}; }
     pointerSettings = loadPointerSettings();
-    try { pointer = new PointerController({ settings }); }
-    catch (error) { pointer = null; console.warn('手势指针不可用', error); }
+    try { pointer = new PointerController({ settings }); fistGuard = new DwellFistGuard(); }
+    catch (error) { pointer = null; fistGuard = null; console.warn('手势指针不可用', error); }
     const engine = new GestureEngine(video, {
       onEvent: handleGesture,
       onFrame: handleGestureFrame,
-      onStop: stopPointerVisuals,
+      onStop: () => { stopPointerVisuals(); if (gesture === engine) gesture = null; render(); },
       settings: { ...settings, mirror: pointerSettings.mirror },
     });
     await engine.start();
@@ -189,7 +192,7 @@ async function startGestures() {
 function handleGesture(event) {
   if (!wall || Date.now() - navAt < 300) return;
   // A fist during a dwell cancels it and is consumed, so it cannot also leave the personal board.
-  if (event.type === 'fist' && dialog !== 'info' && pointerState?.progress > 0) {
+  if (event.type === 'fist' && fistGuard?.event({ type: event.type, dialog, at: event.at })) {
     stopPointerVisuals();
     return;
   }
@@ -223,6 +226,7 @@ function message(text) { if ($('msg')) $('msg').textContent=text; }
 function setDialog(type, html) {
   hideCursor();
   pointer?.reset();
+  fistGuard?.reset();
   dialog = type;
   modal.dataset.kind=type;
   coverMotion(true);
@@ -234,6 +238,7 @@ function setDialog(type, html) {
 function closeDialog() {
   hideCursor();
   pointer?.reset();
+  fistGuard?.reset();
   navAt = Date.now();
   if (candidate?.via === 'camera') ignored = candidate.id;
   if (enrollment) {

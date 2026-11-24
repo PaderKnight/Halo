@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_POINTER_MAP, mapToScreen, solveAffine, isCalibrationCurrent,
-  pointerContextAllowed, PointerController,
+  calibrationWindow, pointerContextAllowed, PointerController, DwellFistGuard,
 } from '../public/pointer-rules.js';
 
 test('default mapping mirrors raw coordinates and clamps to the screen', () => {
@@ -91,4 +91,46 @@ test('smoothing follows the alpha', () => {
   assert.deepEqual({ x: first.x, y: first.y }, { x: 0, y: 0 });
   const second = p.update({ x: 1, y: 1, active: true, at: 10, target: null });
   assert.deepEqual({ x: second.x, y: second.y }, { x: .5, y: .5 });
+});
+
+test('fist during dwell is consumed after the pointer goes inactive', () => {
+  const g = new DwellFistGuard();
+  g.frame({ pose: 'point', progress: 0.5, at: 0 });
+  g.frame({ pose: 'fist', progress: 0, at: 80 });
+  g.frame({ pose: 'fist', progress: 0, at: 680 });
+  assert.equal(g.event({ type: 'fist', dialog: '', at: 700 }), true);
+  assert.equal(g.event({ type: 'fist', dialog: '', at: 8000 }), false);
+});
+test('fist without a dwell is not consumed', () => {
+  const g = new DwellFistGuard();
+  g.frame({ pose: 'fist', progress: 0, at: 0 });
+  assert.equal(g.event({ type: 'fist', dialog: '', at: 700 }), false);
+});
+test('fist in the info dialog is not consumed as a dwell cancel', () => {
+  const g = new DwellFistGuard();
+  g.frame({ pose: 'point', progress: 0.5, at: 0 });
+  g.frame({ pose: 'fist', progress: 0, at: 80 });
+  assert.equal(g.event({ type: 'fist', dialog: 'info', at: 700 }), false);
+});
+
+test('calibration window ages out pre-corner movement and becomes ready', () => {
+  const samples = [
+    { x: .1, y: .1, at: 0 }, { x: .5, y: .5, at: 200 }, { x: .5, y: .5, at: 600 },
+    { x: .5, y: .5, at: 1000 }, { x: .5, y: .5, at: 1400 }, { x: .5, y: .5, at: 1800 },
+  ];
+  const state = calibrationWindow(samples, { at: 1800, windowMs: 1200, requiredMs: 800, maxSpread: .05 });
+  assert.equal(state.ready, true);
+  assert.equal(state.spread, 0);
+});
+test('calibration window needs three samples and 800ms', () => {
+  const at = 800;
+  assert.equal(calibrationWindow([{ x: .5, y: .5, at: 800 }], { at, windowMs: 1200 }).ready, false);
+  assert.equal(calibrationWindow(
+    [{ x: .5, y: .5, at: 0 }, { x: .5, y: .5, at: 800 }], { at, windowMs: 1200 },
+  ).ready, false);
+});
+test('calibration window stays satisfiable at a 1000ms interval', () => {
+  const samples = [0, 1000, 2000, 3000].map(t => ({ x: .5, y: .5, at: t }));
+  const state = calibrationWindow(samples, { at: 3000, windowMs: 3100, requiredMs: 800, maxSpread: .05 });
+  assert.equal(state.ready, true);
 });

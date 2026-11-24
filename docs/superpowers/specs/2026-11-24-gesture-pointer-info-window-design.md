@@ -115,7 +115,7 @@
 2. `[data-gesture-card]`：整张模块卡片；
 3. 信息窗内的 `[data-gesture-key]`（原文链接、翻页箭头、关闭按钮）。
 
-主屏只允许前两类；信息窗内允许带 `data-gesture-key` 的元素。每个目标必须有稳定的键值，用于停留去重：
+主屏（`dialog === ''`）只允许前两类；信息窗（`dialog === 'info'`）只允许带 `data-gesture-key` 的元素，不解析背景卡片/条目，避免透过遮罩切换信息窗。其他弹窗不启用指针。每个目标必须有稳定的键值，用于停留去重：
 
 - 卡片：`card:<moduleId>`；
 - 条目：`item:<moduleId>:<pageIndex>`，**一律使用数字页码**，不使用业务 ID；
@@ -183,10 +183,12 @@
 - 滑动要求手在移动后近似静止 320ms，且窗口内无显著方向反转、置信度达标；挥手的第一段不会抢先触发翻页。
 - 滑动后 300ms 内抑制 `openPalm` 与 `wave`；挥手事件产生时清空滑动窗口。
 - 一次滑动只翻一页，冷却 700ms。
+- 冷却按手势类型独立计算；在某上下文中被忽略的手势不占用其他类型的冷却，因此不会延迟随后改变状态的手势（例如信息窗内的 `openPalm` 不会阻塞握拳关闭）。
 - 停留点击冷却 800ms；目标变化必须重新累计。
 - 光标仅在 `point` 姿势下显示；`openPalm`/`fist`/`thumbsUp` 会立即隐藏光标并取消停留。
 - 指针不模拟真实鼠标事件，只调用应用内动作；不会误触浏览器原生控件。
 - 个人简报上正在停留时，握拳只取消停留并被消费，不触发「返回团队晨报」；没有停留时仍按现有语义返回。
+- 引擎先发 `onFrame` 再发 `onEvent`，握拳事件到达时指针进度已归零。因此用独立的 `DwellFistGuard` 记录最近一次有效停留（宽限约 1.6 秒，覆盖 `pointerLostMs + holdMs + stableFrames × intervalMs`），握拳事件据此判断是否消费；手离开目标后再握拳仍按现有语义处理。
 - 指针在个人简报上同样生效。
 
 ### 5.6 发现性
@@ -221,6 +223,7 @@
 - 静止确认：手在最近 `swipeSettleMs`（320ms）内的水平位移必须 ≤ `swipeSettleDistance`（0.02），且该窗口至少有 2 个采样点。满足基础条件后不立即发事件，等手近似静止再发；这样挥手在峰值处重复采样或自然减速时，反转会先出现在窗口里，不会被误判成滑动。
 - 方向：`ΔswipeX > 0` 为 `swipeRight`，否则 `swipeLeft`。
 - 触发后清空窗口、进入 700ms 冷却，并设置 300ms 的 `openPalm`/`wave` 抑制。
+- 通用冷却按手势类型独立计算；被当前上下文忽略的手势不占用其他类型的冷却，不会延迟随后改变状态的手势。
 - 挥手事件产生时清空滑动窗口；滑动抑制期间也清空窗口，避免挥手结束后的残余位移被当成滑动。
 - 置信度不足或姿势不是 `openPalm` 时清空滑动窗口，避免低质量样本在恢复后立即触发。
 
@@ -229,6 +232,7 @@
 追加到 `DEFAULT_GESTURE_SETTINGS`，不修改既有默认值：
 
 ```js
+pointStableFrames: 3,
 pointerDwellMs: 1000,
 pointerSmoothing: 0.35,
 pointerLostMs: 500,
@@ -262,7 +266,7 @@ swipeSettleDistance: 0.02,
 | 文件 | 改动 |
 |---|---|
 | `public/gesture-rules.js` | `analyzeHand` 增加 `point` 与指尖坐标；状态机增加横滑；`resolveGestureAction` 增加信息窗语义；新增默认参数 |
-| `public/pointer-rules.js`（新增） | 纯逻辑：仿射映射、默认映射、夹取、平滑、`PointerController`（停留/目标/进度/点击） |
+| `public/pointer-rules.js`（新增） | 纯逻辑：仿射映射、默认映射、夹取、平滑、`PointerController`（停留/目标/进度/点击）、`DwellFistGuard`（停留握拳消费）、`calibrationWindow`（标定滑动窗口） |
 | `public/gesture.js` | 每帧附带 `pointer` 信息（指尖、镜像后 x、活跃状态）；设置透传 |
 | `public/app.js` | 光标 DOM 生命周期、指针上下文守卫、命中测试、停留动作、信息窗分页动作、手势提示文案 |
 | `public/dashboard.js` | 卡片/条目 `data-gesture-*` 属性；`openInfo`、`flipPage`、信息窗渲染与页码；鼠标点击卡片正文打开信息窗；方向键翻页 |
@@ -270,8 +274,9 @@ swipeSettleDistance: 0.02,
 | `public/dashboard.css` | 光标、悬停高亮、信息窗、页码与箭头、页码闪动反馈 |
 | `public/wall.css` | 信息窗在窄屏/大屏下的尺寸与排版 |
 | `public/debug.html`、`debug.css`、`debug.js` | 指针停留/滑动参数、四点标定入口与全屏标定层、测试光标、滑动手势日志 |
-| `test/gesture.test.mjs` | 指姿、横滑、动作语义、指针映射与停留单测 |
-| `test/info-window.mjs`（新增） | 浏览器回归：卡片属性、鼠标打开信息窗、翻页、Esc、链接不被劫持 |
+| `test/gesture.test.mjs` | 指姿、横滑、动作语义单测 |
+| `test/pointer.test.mjs`（新增） | 映射、仿射标定、停留控制器、`DwellFistGuard`、`calibrationWindow` 单测 |
+| `test/info-window.mjs`（新增） | 浏览器回归：卡片属性、鼠标打开信息窗、翻页、Esc、链接不被劫持、光标元素 |
 | `package.json` | `test` / `test:browser` 增加新测试文件 |
 | `README.md` | 新增手势指针、悬浮窗与翻页说明 |
 
@@ -303,6 +308,18 @@ new PointerController({ settings })
   .reset()
 // target 由 app.js 命中测试提供：{ key: string|null, inside: boolean }
 // PointerController 不访问 DOM，只做平滑、目标去重、停留计时与冷却。
+
+new DwellFistGuard({ graceMs = 1600 })
+  .frame({ pose, progress, at }) -> void
+  .event({ type, dialog, at }) -> boolean   // true = 把 fist 当作“取消停留”消费
+  .reset()
+// 引擎先发 onFrame 再发 onEvent；fist 事件到达时 PointerController 已回到 progress:0。
+// Guard 记录最近一次有效停留时间，宽限期内到达的 fist 事件不再触发 home。
+
+// 标定滑动窗口：返回保留样本与稳定性判断，供调试页每帧调用。
+calibrationWindow(samples, { at, windowMs, requiredMs = 800, maxSpread = 0.05, minSamples = 3 })
+  -> { kept, span, spread, ready, progress }
+// samples: [{ x, y, at }]；只保留 at 落在窗口内的点；早期移动随窗口滑出，不会永久污染 spread。
 
 // gesture.js
 new GestureEngine(video, { onFrame, onEvent, settings })
@@ -372,7 +389,8 @@ morning.gesture.pointer = {
   - 「镜像」开关（默认开；切换后清除标定并提示重新标定）；
   - 当前姿势显示 `指向`，并显示指尖在画面中的位置；
   - 手势日志记录 `swipeLeft` / `swipeRight`。
-- 「四点标定」：进入全屏标定层，四角 8%/92% 处显示目标圆点，依次停留 800ms 采集指尖原始坐标；四点完成后最小二乘拟合仿射矩阵并保存；Esc 取消。标定期间不执行主屏动作。
+- 「四点标定」：进入全屏标定层，四角 8%/92% 处显示目标圆点（圆心与目标比例一致），依次停留 800ms 采集指尖原始坐标；四点完成后最小二乘拟合仿射矩阵并保存；Esc 取消。标定期间不执行主屏动作。
+- 标定采样使用滑动窗口：`windowMs = max(1200, 3 × intervalMs + 100)`，每帧只保留窗口内样本；要求至少 3 个样本、窗口跨度 ≥800ms、`spread ≤ 0.05`。早期移动或抖动会随窗口滑出，不会永久污染；检测间隔 1000ms 时窗口自动放宽到 3100ms。
 - 「测试指针」：把当前指尖经保存的映射画成页面上的光标，便于确认方向与范围。
 - 「清除标定」：恢复默认映射。
 - 标定与测试都不录像、不截图、不上传；覆盖层只读取手部关键点。
@@ -387,6 +405,8 @@ morning.gesture.pointer = {
 - `resolveGestureAction`：信息窗中 `fist → closeInfo`、`swipeLeft → pageNext`、`swipeRight → pagePrev`；信息窗中 `wave/openPalm/thumbsUp` 返回 null；`enabled: false` 时一律 null；其他弹窗行为不变。
 - `mapToScreen`：默认映射镜像、边界夹取；仿射标定对已知四点还原；镜像在仿射之前应用；无效标定回退默认。
 - `PointerController`：停留累计到阈值只点击一次；`target.key` 变化重置；`inside=false` 重置；手丢失超过 500ms 隐藏；冷却期内不重复；平滑值符合系数。
+- `DwellFistGuard`：按引擎顺序（point frame → fist frame → fist event）消费握拳；没有停留时不消费；信息窗内不消费（仍关闭窗口）；宽限期后不消费。
+- `calibrationWindow`：早期离群/移动样本会随窗口滑出并恢复 ready；单样本或不足 800ms 不 ready；1000ms 检测间隔、3100ms 窗口下仍可 ready。
 - `solveAffine`：用构造的四点与已知矩阵验证误差接近 0；退化点返回 null；按镜像换算输入。
 
 ### 浏览器回归（Playwright，沿用假摄像头）
@@ -452,3 +472,4 @@ morning.gesture.pointer = {
 | 7 | 换摄像头/分辨率后标定是否有效 | 标定记录 device/size；不一致时忽略并回退默认映射，调试页提示重新标定 |
 | 8 | 个人简报上握拳与停留冲突 | 正在停留时握拳只取消停留并被消费；没有停留时沿用现有「返回团队晨报」 |
 | 9 | 横滑与挥手的第一段重叠 | 横滑要求移动后静止 320ms（至少 2 个采样点）、窗口内无显著方向反转且置信度达标；挥手事件与抑制期间清空滑动窗口，避免残余位移翻页 |
+| 10 | 握拳事件晚于指针归零、信息窗背景可命中 | 独立 `DwellFistGuard` 记录停留宽限期；信息窗打开时只解析 `info:` 键，不解析背景卡片/条目 |

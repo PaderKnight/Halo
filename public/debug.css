@@ -217,6 +217,32 @@ select:focus-visible, button:focus-visible, input:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.pointer-row { align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+
+.pointer-row label.switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.pointer-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+
+.calibration { position: fixed; inset: 0; z-index: 50; background: #0b1726e8; display: grid; place-items: center; }
+.calibration[hidden] { display: none; }
+.calibration-card { text-align: center; max-width: 22rem; padding: 1.2rem; border: 1px solid #ffffff26; border-radius: 16px; background: #1a2c43; }
+.calibration-progress { height: 4px; background: #ffffff1f; border-radius: 2px; margin: 14px 0; overflow: hidden; }
+.calibration-progress i { display: block; height: 100%; width: 0; background: #cfe6ff; transition: width 80ms linear; }
+#calibration-status { margin: 8px 0 0; min-height: 18px; }
+.calibration-target { position: absolute; width: 28px; height: 28px; border: 2px solid #cfe6ff; border-radius: 50%; box-shadow: 0 0 18px #cfe6ff66; transform: translate(-50%, -50%); }
+.calibration-target.c0 { left: 8%; top: 8%; }
+.calibration-target.c1 { left: 92%; top: 8%; }
+.calibration-target.c2 { left: 92%; top: 92%; }
+.calibration-target.c3 { left: 8%; top: 92%; }
+#debug-cursor { position: fixed; left: 0; top: 0; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: #cfe6ff; box-shadow: 0 0 14px #cfe6ff; pointer-events: none; z-index: 60; }
+#debug-cursor[hidden] { display: none; }
+
 @media (max-width: 760px) {
   #debug { padding: 14px; }
   .layout { grid-template-columns: 1fr; }

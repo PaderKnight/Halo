@@ -43,6 +43,7 @@ try {
   assert.equal(await p.locator('#gesture-cursor').isVisible(),false);
   assert.equal(await p.locator('.info-page').innerText(),'1 / 3');
   assert.ok((await p.locator('.info-body').innerText()).includes('第一行'));
+  assert.ok(await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.info-line')).fontSize)) >= 22);
 
   await p.locator('[data-info-next]').click();
   assert.equal(await p.locator('.info-page').innerText(),'2 / 3');
@@ -70,5 +71,10 @@ try {
   console.log('PASS info window opens, pages with buttons and arrow keys, and leaves module settings intact');
 } finally {
   await browser?.close();
-  server.kill();
+  if (server.exitCode === null) {
+    const stopped = once(server, 'exit');
+    server.kill();
+    await Promise.race([stopped, new Promise(resolve => setTimeout(resolve, 5000))]);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
 }

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  analyzeHand, GestureStateMachine, resolveGestureAction, DEFAULT_GESTURE_SETTINGS, mirrorX,
+  analyzeHand, GestureStateMachine, PointStability, resolveGestureAction,
+  DEFAULT_GESTURE_SETTINGS, mirrorX,
 } from '../public/gesture-rules.js';
 
 const hand = points => Array.from({ length: 21 }, (_, i) => points[i] ?? { x: 0.5, y: 0.75 });
@@ -86,6 +87,41 @@ test('cooldown blocks repeated events', () => {
   assert.equal(sm.push(f(0)).length, 1);
   assert.equal(sm.push(f(200)).length, 0);
   assert.equal(sm.push(f(1200)).length, 1);
+});
+test('cooldowns are per gesture type, so an ignored gesture does not block a fist', () => {
+  const sm = new GestureStateMachine({ stableFrames: 1, holdMs: 0, cooldownMs: 2000 });
+  const frame = (pose, at) => ({ pose, confidence: 0.9, palmX: 0.5, hand: 'Right', at });
+  assert.deepEqual(sm.push(frame('openPalm', 0)).map(e => e.type), ['openPalm']);
+  assert.deepEqual(sm.push(frame('fist', 100)).map(e => e.type), ['fist']);
+  assert.equal(sm.push(frame('fist', 200)).length, 0);
+  assert.deepEqual(sm.push(frame('fist', 2100)).map(e => e.type), ['fist']);
+});
+test('point becomes active only after three confident frames', () => {
+  assert.equal(DEFAULT_GESTURE_SETTINGS.pointStableFrames, 3);
+  const ps = new PointStability();
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), true);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), true);
+});
+test('a non-point pose or low confidence resets point stability', () => {
+  const ps = new PointStability();
+  ps.update({ pose: 'point', confidence: 0.9 });
+  ps.update({ pose: 'point', confidence: 0.9 });
+  assert.equal(ps.update({ pose: 'openPalm', confidence: 0.9 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), true);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.3 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), false);
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), true);
+});
+test('point stability settings are configurable', () => {
+  const ps = new PointStability({ stableFrames: 2, minConfidence: 0.8 });
+  assert.equal(ps.update({ pose: 'point', confidence: 0.9 }), false);
+  ps.updateSettings({ stableFrames: 1, minConfidence: 0.5 });
+  assert.equal(ps.update({ pose: 'point', confidence: 0.6 }), true);
 });
 test('resolveGestureAction applies context guards', () => {
   const evt = type => ({ type, confidence: 0.9, at: 0, hand: 'Right' });

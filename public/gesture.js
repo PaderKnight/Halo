@@ -1,5 +1,5 @@
 import {
-  analyzeHand, GestureStateMachine, DEFAULT_GESTURE_SETTINGS, mirrorX,
+  analyzeHand, GestureStateMachine, PointStability, DEFAULT_GESTURE_SETTINGS, mirrorX,
 } from './gesture-rules.js';
 
 const VISION_PATH = '/mediapipe/vision_bundle.mjs';
@@ -18,6 +18,10 @@ export class GestureEngine {
     };
     this.mirror = this.settings.mirror !== false;
     this.machine = new GestureStateMachine(this.settings);
+    this.pointStability = new PointStability({
+      stableFrames: this.settings.pointStableFrames,
+      minConfidence: this.settings.minConfidence,
+    });
     this.handLandmarker = null;
     this.timer = null;
     this.lastTimestamp = -1;
@@ -34,6 +38,7 @@ export class GestureEngine {
     this.settings = { ...this.settings, ...partial };
     this.mirror = this.settings.mirror !== false;
     this.machine.updateSettings(partial);
+    this.pointStability.updateSettings(partial);
   }
 
   async start() {
@@ -128,6 +133,7 @@ export class GestureEngine {
     const palmX = Number.isFinite(analysis?.palmX) ? analysis.palmX : NaN;
     const palmY = Number.isFinite(analysis?.palmY) ? analysis.palmY : NaN;
     const swipeX = Number.isFinite(palmX) ? mirrorX(palmX, this.mirror) : NaN;
+    const pointerActive = this.pointStability.update({ pose, confidence });
     const events = this.machine.push({
       pose,
       confidence,
@@ -148,7 +154,7 @@ export class GestureEngine {
       pointer: {
         x: analysis?.tipX ?? NaN,
         y: analysis?.tipY ?? NaN,
-        active: pose === 'point',
+        active: pointerActive,
       },
     });
     for (const event of events) this.onEvent(event);

@@ -196,6 +196,26 @@ try {
   assert.deepEqual(fallbackErrors, [], 'mesh failure degrades without page errors');
   await fallback.close();
 
+  // Pointer panel: sliders, mirror persistence, calibration overlay and test cursor.
+  assert.equal(await page.locator('#gesture-pointer-dwell').inputValue(),'1000');
+  assert.equal(await page.locator('#gesture-swipe-distance').inputValue(),'0.18');
+  assert.equal(await page.locator('#pointer-mirror').isChecked(),true);
+
+  await page.locator('#gesture-pointer-dwell').evaluate(el=>{el.value='1200';el.dispatchEvent(new Event('input',{bubbles:true}));});
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('morning.gesture.tuning')).pointerDwellMs),1200);
+
+  await page.locator('#pointer-mirror').uncheck();
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('morning.gesture.pointer')).mirror),false);
+
+  await page.locator('#pointer-calibrate').click();
+  assert.equal(await page.locator('#calibration').isVisible(),true);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#calibration').isVisible(),false);
+
+  await page.locator('#pointer-test').check();
+  assert.equal(await page.locator('#pointer-test').isChecked(),true);
+  assert.equal(await page.locator('#debug-cursor').isVisible(),false);
+
   console.log('PASS debug page loads camera, tuning, standalone assets, sample guard and gesture panel');
   await page.close();
 } finally {

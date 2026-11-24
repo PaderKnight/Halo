@@ -9,6 +9,7 @@ export const DEFAULT_GESTURE_SETTINGS = {
   waveMinReversals: 2,
   palmMaxDrift: 0.12,
   waveSuppressMs: 500,
+  pointStableFrames: 3,
   pointerDwellMs: 1000,
   pointerSmoothing: 0.35,
   pointerLostMs: 500,
@@ -92,7 +93,9 @@ export function analyzeHand(landmarks) {
 export class GestureStateMachine {
   constructor(settings = {}) {
     this.settings = { ...DEFAULT_GESTURE_SETTINGS, ...settings };
-    this.cooldownUntil = -Infinity;
+    // Cooldowns are per gesture type: a gesture ignored by the current context must
+    // not delay a later state-changing gesture (e.g. openPalm before a fist).
+    this.cooldowns = { wave: -Infinity, openPalm: -Infinity, fist: -Infinity, thumbsUp: -Infinity };
     this.waveSuppressUntil = -Infinity;
     this.swipeSuppressUntil = -Infinity;
     this.swipeCooldownUntil = -Infinity;
@@ -155,8 +158,8 @@ export class GestureStateMachine {
     if (waving) {
       this._resetWave();
       this._resetRun();
-      if (at < this.cooldownUntil) return [];
-      this.cooldownUntil = at + settings.cooldownMs;
+      if (at < this.cooldowns.wave) return [];
+      this.cooldowns.wave = at + settings.cooldownMs;
       this.waveSuppressUntil = at + settings.waveSuppressMs;
       this.swipeSuppressUntil = at + settings.swipeSuppressMs;
       this._resetSwipe();
@@ -172,12 +175,12 @@ export class GestureStateMachine {
     const holdMs = pose === 'thumbsUp' ? settings.thumbsUpHoldMs : settings.holdMs;
     if (this.run.count < settings.stableFrames) return [];
     if (at - this.run.startAt < holdMs) return [];
-    if (at < this.cooldownUntil) return [];
+    if (at < this.cooldowns[pose]) return [];
     if (pose === 'openPalm' && at < this.waveSuppressUntil) return [];
 
     const event = { type: pose, confidence, at, hand };
     this._resetRun();
-    this.cooldownUntil = at + settings.cooldownMs;
+    this.cooldowns[pose] = at + settings.cooldownMs;
     return [event];
   }
 
@@ -282,6 +285,30 @@ export class GestureStateMachine {
 
     this._resetSwipe();
     return dir > 0 ? 'swipeRight' : 'swipeLeft';
+  }
+}
+
+export class PointStability {
+  constructor({ stableFrames = 3, minConfidence = 0.6 } = {}) {
+    this.stableFrames = Number.isFinite(stableFrames) ? stableFrames : 3;
+    this.minConfidence = Number.isFinite(minConfidence) ? minConfidence : 0.6;
+    this.count = 0;
+  }
+
+  updateSettings(partial = {}) {
+    const next = partial && typeof partial === 'object' ? partial : {};
+    if (Number.isFinite(next.stableFrames)) this.stableFrames = next.stableFrames;
+    if (Number.isFinite(next.minConfidence)) this.minConfidence = next.minConfidence;
+  }
+
+  update({ pose = null, confidence = NaN } = {}) {
+    const ok = pose === 'point' && Number.isFinite(confidence) && confidence >= this.minConfidence;
+    this.count = ok ? this.count + 1 : 0;
+    return ok && this.count >= this.stableFrames;
+  }
+
+  reset() {
+    this.count = 0;
   }
 }
 

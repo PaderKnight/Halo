@@ -3,6 +3,7 @@ import { distance } from './match.js';
 import { GestureEngine } from './gesture.js';
 import { DEFAULT_GESTURE_SETTINGS } from './gesture-rules.js';
 import { FaceMeshEngine, drawFaceMesh } from './facemesh.js';
+import { mapToScreen, solveAffine, isCalibrationCurrent, calibrationWindow } from './pointer-rules.js';
 
 const TUNING_KEY = 'morning.face.tuning';
 const TEMPLATES_KEY = 'morning.wall.face-templates.v1';
@@ -10,6 +11,15 @@ const DEVICE_KEY = 'morning.camera.device';
 const SIZE_KEY = 'morning.camera.size';
 const GESTURE_ENABLED_KEY = 'morning.gesture.enabled';
 const GESTURE_TUNING_KEY = 'morning.gesture.tuning';
+const POINTER_KEY = 'morning.gesture.pointer';
+const CALIBRATION_CORNERS = [
+  { x: 0.08, y: 0.08 },
+  { x: 0.92, y: 0.08 },
+  { x: 0.92, y: 0.92 },
+  { x: 0.08, y: 0.92 },
+];
+const CALIBRATION_SAMPLE_MS = 800;
+const CALIBRATION_MAX_SPREAD = 0.05;
 
 const $ = id => document.getElementById(id);
 const video = $('video');
@@ -37,6 +47,17 @@ const handCount = $('hand-count');
 const meshNote = $('mesh-note');
 const gestureLog = $('gesture-log');
 const gestureExport = $('gesture-export');
+const pointerMirrorInput = $('pointer-mirror');
+const pointerCalibrateButton = $('pointer-calibrate');
+const pointerClearButton = $('pointer-clear');
+const pointerTestInput = $('pointer-test');
+const pointerStatus = $('pointer-status');
+const calibrationOverlay = $('calibration');
+const calibrationStep = $('calibration-step');
+const calibrationStatus = $('calibration-status');
+const calibrationBar = $('calibration-bar');
+const calibrationCancel = $('calibration-cancel');
+const debugCursor = $('debug-cursor');
 
 const tuningInputs = {
   matchThreshold: $('match-threshold'),
@@ -50,6 +71,8 @@ const gestureInputs = {
   holdMs: $('gesture-hold-ms'),
   cooldownMs: $('gesture-cooldown-ms'),
   intervalMs: $('gesture-interval-ms'),
+  pointerDwellMs: $('gesture-pointer-dwell'),
+  swipeMinDistance: $('gesture-swipe-distance'),
 };
 
 const HAND_CONNECTIONS = [
@@ -60,10 +83,21 @@ const HAND_CONNECTIONS = [
   [13, 17], [17, 18], [18, 19], [19, 20],
   [0, 17],
 ];
-const GESTURE_LABELS = { openPalm: '张开手掌', fist: '握拳', thumbsUp: '竖大拇指', wave: '挥手' };
+const GESTURE_LABELS = {
+  openPalm: '张开手掌',
+  fist: '握拳',
+  thumbsUp: '竖大拇指',
+  wave: '挥手',
+  point: '指向',
+  swipeLeft: '左滑',
+  swipeRight: '右滑',
+};
 
 let tuning = loadFaceTuning();
 let gestureTuning = loadGestureTuning();
+let pointerSettings = loadPointerSettings();
+let calibrationSession = null;
+let testPointer = false;
 let latestFrame = null;
 let latestHands = [];
 let latestHandFrame = null;
@@ -182,6 +216,185 @@ function applyGestureTuning(values = readGestureInputs(), persist = true) {
   syncGestureInputs();
   engine?.updateSettings(gestureTuning);
   if (persist) persistGestureTuning();
+}
+
+function loadPointerSettings() {
+  const fallback = {
+    mirror: true,
+    calibration: null,
+    camera: { device: '', size: '1280x720' },
+    updatedAt: null,
+  };
+  try {
+    const raw = localStorage.getItem(POINTER_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
+    return {
+      mirror: parsed.mirror !== false,
+      calibration: parsed.calibration && typeof parsed.calibration === 'object' ? parsed.calibration : null,
+      camera: parsed.camera && typeof parsed.camera === 'object'
+        ? { device: parsed.camera.device ?? '', size: parsed.camera.size ?? '1280x720' }
+        : { device: '', size: '1280x720' },
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function persistPointerSettings() {
+  try {
+    localStorage.setItem(POINTER_KEY, JSON.stringify(pointerSettings));
+  } catch (error) {
+    showGestureError('指针设置保存失败：' + describeError(error));
+  }
+}
+
+function currentFingerprint() {
+  return { device: savedDevice(), size: savedSize() };
+}
+
+function pointerStatusText() {
+  if (pointerSettings.calibration && isCalibrationCurrent(pointerSettings.camera, currentFingerprint())) {
+    return '已标定';
+  }
+  return '摄像头已变化，请重新标定';
+}
+
+function updateCalibrationView() {
+  if (!calibrationSession) {
+    calibrationStep.textContent = '点击角落圆点，保持食指指向 1 秒';
+    calibrationBar.style.width = '0%';
+    return;
+  }
+  const corner = calibrationSession.index;
+  calibrationStep.textContent = corner < CALIBRATION_CORNERS.length
+    ? `第 ${corner + 1}/${CALIBRATION_CORNERS.length} 点 · 保持食指指向 1 秒`
+    : '正在计算标定…';
+  calibrationBar.style.width = '0%';
+}
+
+function setPointerStatus(text) {
+  if (pointerStatus.textContent !== text) pointerStatus.textContent = text;
+  if (calibrationStatus.textContent !== text) calibrationStatus.textContent = text;
+}
+
+function startCalibration() {
+  calibrationSession = { index: 0, pairs: [], samples: [] };
+  calibrationOverlay.hidden = false;
+  updateCalibrationView();
+  setPointerStatus('等待手势数据');
+}
+
+function cancelCalibration() {
+  calibrationSession = null;
+  calibrationOverlay.hidden = true;
+  calibrationBar.style.width = '0%';
+  setPointerStatus(pointerStatusText());
+}
+
+function finishCalibration() {
+  const session = calibrationSession;
+  if (!session) return;
+  const calibration = solveAffine(session.pairs, pointerSettings.mirror);
+  if (!calibration) {
+    session.index = 0;
+    session.pairs = [];
+    session.samples = [];
+    updateCalibrationView();
+    setPointerStatus('标定失败，请重试');
+    return;
+  }
+  calibrationSession = null;
+  pointerSettings.calibration = calibration;
+  pointerSettings.camera = currentFingerprint();
+  pointerSettings.updatedAt = new Date().toISOString();
+  persistPointerSettings();
+  calibrationOverlay.hidden = true;
+  calibrationBar.style.width = '0%';
+  setPointerStatus('标定已保存，刷新主屏生效');
+}
+
+function captureCalibration(pointer, at) {
+  const session = calibrationSession;
+  if (!session) return;
+  const x = Number(pointer?.x);
+  const y = Number(pointer?.y);
+  if (!pointer?.active || !Number.isFinite(x) || !Number.isFinite(y)) {
+    session.samples = [];
+    calibrationBar.style.width = '0%';
+    setPointerStatus('等待手势数据');
+    return;
+  }
+  const stamp = Number.isFinite(at) ? at : performance.now();
+  session.samples.push({ x, y, at: stamp });
+  const windowMs = Math.max(1200, (gestureTuning.intervalMs || 80) * 3 + 100);
+  const state = calibrationWindow(session.samples, {
+    at: stamp,
+    windowMs,
+    requiredMs: CALIBRATION_SAMPLE_MS,
+    maxSpread: CALIBRATION_MAX_SPREAD,
+  });
+  // Keep only the trailing window so pre-corner movement cannot poison the spread.
+  session.samples = state.kept;
+  calibrationBar.style.width = `${Math.round(state.progress * 100)}%`;
+  if (!state.ready) {
+    setPointerStatus('正在标定，请保持指向');
+    return;
+  }
+
+  let sumX = 0;
+  let sumY = 0;
+  for (const sample of state.kept) {
+    sumX += sample.x;
+    sumY += sample.y;
+  }
+
+  const count = state.kept.length;
+  const corner = CALIBRATION_CORNERS[session.index];
+  session.pairs.push({
+    rawX: sumX / count,
+    rawY: sumY / count,
+    screenX: corner.x,
+    screenY: corner.y,
+  });
+  session.index += 1;
+  session.samples = [];
+  if (session.index >= CALIBRATION_CORNERS.length) {
+    finishCalibration();
+  } else {
+    updateCalibrationView();
+    setPointerStatus('等待手势数据');
+  }
+}
+
+function updateTestCursor(pointer) {
+  const x = Number(pointer?.x);
+  const y = Number(pointer?.y);
+  if (!testPointer || !pointer?.active || !Number.isFinite(x) || !Number.isFinite(y)) {
+    debugCursor.hidden = true;
+    return;
+  }
+  const mapped = mapToScreen({ x, y }, pointerSettings.calibration, pointerSettings.mirror);
+  debugCursor.style.left = `${mapped.x * 100}%`;
+  debugCursor.style.top = `${mapped.y * 100}%`;
+  debugCursor.hidden = false;
+}
+
+function setPointerMirror(mirror) {
+  pointerSettings.mirror = mirror !== false;
+  pointerSettings.calibration = null;
+  persistPointerSettings();
+  engine?.updateSettings({ mirror: pointerSettings.mirror });
+  setPointerStatus('标定已清除，请重新标定');
+}
+
+function clearPointerCalibration() {
+  pointerSettings.calibration = null;
+  pointerSettings.camera = { device: '', size: '1280x720' };
+  pointerSettings.updatedAt = null;
+  persistPointerSettings();
+  setPointerStatus('已清除标定');
 }
 
 function onFrame(payload) {
@@ -369,6 +582,8 @@ function resetHandStats() {
 
 function onGestureFrame(payload) {
   try {
+    if (calibrationSession) captureCalibration(payload?.pointer, payload?.at);
+    updateTestCursor(payload?.pointer);
     const hands = Array.isArray(payload?.hands) ? payload.hands : [];
     latestHands = hands;
     const best = hands.length
@@ -413,6 +628,7 @@ function setGestureToggleState() {
 function resetGestureView() {
   latestHands = [];
   latestHandFrame = null;
+  debugCursor.hidden = true;
   resetHandStats();
   drawOverlay(latestFrame?.detections);
 }
@@ -433,7 +649,7 @@ async function startGestures() {
       onFrame: onGestureFrame,
       onEvent: onGestureEvent,
       onStop: onEngineStopped,
-      settings: gestureTuning,
+      settings: { ...gestureTuning, mirror: pointerSettings.mirror },
     });
     await next.start();
     engine = next;
@@ -978,6 +1194,20 @@ function wireEvents() {
   }
   gestureExport.addEventListener('click', exportGestureFrame);
 
+  pointerMirrorInput.addEventListener('change', () => setPointerMirror(pointerMirrorInput.checked));
+  pointerCalibrateButton.addEventListener('click', startCalibration);
+  pointerClearButton.addEventListener('click', clearPointerCalibration);
+  pointerTestInput.addEventListener('change', () => {
+    testPointer = pointerTestInput.checked;
+    if (!testPointer) debugCursor.hidden = true;
+  });
+  calibrationCancel.addEventListener('click', cancelCalibration);
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !calibrationSession) return;
+    event.preventDefault();
+    cancelCalibration();
+  });
+
   navigator.mediaDevices?.addEventListener?.('devicechange', () => void listDevices());
 
   const redraw = () => {
@@ -1000,6 +1230,10 @@ function savedSizeValue() {
 async function boot() {
   applyGestureTuning(gestureTuning, true);
   gestureEnabledInput.checked = gestureEnabled();
+  pointerMirrorInput.checked = pointerSettings.mirror;
+  pointerTestInput.checked = false;
+  testPointer = false;
+  setPointerStatus(pointerStatusText());
   syncTuningInputs(tuning);
   sizeSelect.value = savedSizeValue();
   wireEvents();
