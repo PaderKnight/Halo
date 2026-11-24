@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/brief.test.mjs test/modules.test.mjs test/assets.test.mjs test/match.test.mjs test/gesture.test.mjs test/pointer.test.mjs",
+    "test": "node --test test/brief.test.mjs test/modules.test.mjs test/assets.test.mjs test/match.test.mjs test/facemesh.test.mjs test/gesture.test.mjs test/pointer.test.mjs",
     "test:browser": "node test/wall.mjs && node test/camera.mjs && node test/debug.mjs && node test/wall-gesture.mjs && node test/info-window.mjs"
   },
   "dependencies": {
