@@ -715,25 +715,27 @@ function onMeshError(error) {
 async function startMesh() {
   if (meshFailed || meshStarting || meshEngine?.running) return;
   if (!camera.streaming || !video.videoWidth) return;
-  meshFailed = false;
   meshStarting = true;
   const next = new FaceMeshEngine(video, { onFrame: onMeshFrame, onError: onMeshError });
   meshEngine = next;
   try {
     await next.start();
   } catch (error) {
-    onMeshError(error);
+    // A load abandoned by stopMesh() is not a degradation: only the current engine may report.
+    if (meshEngine === next) onMeshError(error);
   } finally {
-    meshStarting = false;
+    if (meshEngine === next) meshStarting = false;
   }
 }
 
 function stopMesh() {
   const current = meshEngine;
   meshEngine = null;
+  meshStarting = false;
   try { current?.stop(); } catch (error) { console.warn('网格停止失败', error); }
   latestMesh = [];
   meshConnections = [];
+  meshFailed = false;
   meshNote.textContent = '网格 —';
 }
 

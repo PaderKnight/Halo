@@ -125,15 +125,23 @@ export class FaceMeshEngine {
   async start() {
     if (this._running) return;
     const token = this._generation;
-    const api = await import(VISION_PATH);
-    const fileset = await api.FilesetResolver.forVisionTasks(WASM_PATH);
-    const landmarker = await api.FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: MODEL_PATH, delegate: 'CPU' },
-      runningMode: 'VIDEO',
-      numFaces: 1,
-      outputFaceBlendshapes: false,
-      outputFacialTransformationMatrixes: false,
-    });
+    let api;
+    let landmarker;
+    try {
+      api = await import(VISION_PATH);
+      const fileset = await api.FilesetResolver.forVisionTasks(WASM_PATH);
+      landmarker = await api.FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MODEL_PATH, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false,
+      });
+    } catch (error) {
+      // stop() during the load makes the failed load irrelevant, not a degradation.
+      if (token !== this._generation) return;
+      throw error;
+    }
     // stop() may have been called while the wasm runtime and model were loading.
     if (token !== this._generation) {
       try { landmarker.close?.(); } catch (error) { console.error('人脸网格模型关闭失败', error); }

@@ -191,7 +191,8 @@ try {
   await fallback.addInitScript(fakeCamera);
   await fallback.route('**/models/face_landmarker.task', route => route.abort());
   await fallback.goto(url + '/debug.html');
-  await fallback.locator('#toggle').click();
+  // The camera auto-starts on boot; do not click #toggle or the stop path would reset the note first.
+  await fallback.waitForFunction(() => document.querySelector('#video').videoWidth > 0);
   await fallback.waitForFunction(() => (document.querySelector('#mesh-note')?.textContent || '').includes('网格未启用'), null, { timeout: 60000 });
   assert.deepEqual(fallbackErrors, [], 'mesh failure degrades without page errors');
   await fallback.close();
