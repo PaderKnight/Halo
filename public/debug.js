@@ -2,6 +2,7 @@ import { Camera, DEFAULT_FACE_TUNING, SAMPLE_MAX_DISTANCE, loadFaceTuning, enrol
 import { distance } from './match.js';
 import { GestureEngine } from './gesture.js';
 import { DEFAULT_GESTURE_SETTINGS } from './gesture-rules.js';
+import { FaceMeshEngine, drawFaceMesh } from './facemesh.js';
 
 const TUNING_KEY = 'morning.face.tuning';
 const TEMPLATES_KEY = 'morning.wall.face-templates.v1';
@@ -33,6 +34,7 @@ const gestureError = $('gesture-error');
 const handFps = $('hand-fps');
 const handTiming = $('hand-timing');
 const handCount = $('hand-count');
+const meshNote = $('mesh-note');
 const gestureLog = $('gesture-log');
 const gestureExport = $('gesture-export');
 
@@ -67,6 +69,11 @@ let latestHands = [];
 let latestHandFrame = null;
 let engine = null;
 let gestureStarting = false;
+let meshEngine = null;
+let latestMesh = [];
+let meshConnections = [];
+let meshFailed = false;
+let meshStarting = false;
 let profiles = [];
 let profileNames = new Map();
 let frameStamps = [];
@@ -270,16 +277,24 @@ function drawOverlay(detections) {
   context.lineWidth = 2;
   context.strokeStyle = '#59d2ff';
   context.fillStyle = '#ffd166';
-  for (const detection of Array.isArray(detections) ? detections : []) {
+  const list = Array.isArray(detections) ? detections : [];
+  for (const detection of list) {
     const box = detection?.box;
     if (box && [box.x, box.y, box.width, box.height].every(Number.isFinite)) {
       context.strokeRect(box.x, box.y, box.width, box.height);
     }
-    for (const point of Array.isArray(detection?.landmarks) ? detection.landmarks : []) {
-      if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
-      context.beginPath();
-      context.arc(point.x, point.y, 1.6, 0, Math.PI * 2);
-      context.fill();
+  }
+  if (latestMesh.length) {
+    drawFaceMesh(context, latestMesh, { connections: meshConnections, width, height });
+  } else if (!meshEngine?.running) {
+    // 网格引擎未运行时退回 68 点阵，保证任何网格失败都有可见降级。
+    for (const detection of list) {
+      for (const point of Array.isArray(detection?.landmarks) ? detection.landmarks : []) {
+        if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) continue;
+        context.beginPath();
+        context.arc(point.x, point.y, 1.6, 0, Math.PI * 2);
+        context.fill();
+      }
     }
   }
   drawHands(context, latestHands, width, height);
@@ -456,6 +471,56 @@ function toggleGestures() {
   else void startGestures();
 }
 
+function onMeshFrame(payload) {
+  try {
+    latestMesh = Array.isArray(payload?.faces) ? payload.faces : [];
+    meshConnections = Array.isArray(payload?.connections) ? payload.connections : [];
+    const detectMs = Number.isFinite(payload?.timings?.detectMs) ? payload.timings.detectMs : '—';
+    meshNote.textContent = `网格 ${latestMesh.length} 张 · ${detectMs}ms`;
+    drawOverlay(latestFrame?.detections);
+  } catch (error) {
+    showError('网格画面绘制失败：' + describeError(error));
+  }
+}
+
+function onMeshError(error) {
+  meshFailed = true;
+  latestMesh = [];
+  meshConnections = [];
+  meshNote.textContent = '网格未启用';
+  console.warn('人脸网格不可用：' + describeError(error));
+  try {
+    drawOverlay(latestFrame?.detections);
+  } catch (drawError) {
+    showError('叠加层重绘失败：' + describeError(drawError));
+  }
+}
+
+async function startMesh() {
+  if (meshFailed || meshStarting || meshEngine?.running) return;
+  if (!camera.streaming || !video.videoWidth) return;
+  meshFailed = false;
+  meshStarting = true;
+  const next = new FaceMeshEngine(video, { onFrame: onMeshFrame, onError: onMeshError });
+  meshEngine = next;
+  try {
+    await next.start();
+  } catch (error) {
+    onMeshError(error);
+  } finally {
+    meshStarting = false;
+  }
+}
+
+function stopMesh() {
+  const current = meshEngine;
+  meshEngine = null;
+  try { current?.stop(); } catch (error) { console.warn('网格停止失败', error); }
+  latestMesh = [];
+  meshConnections = [];
+  meshNote.textContent = '网格 —';
+}
+
 function exportGestureFrame() {
   if (!latestHandFrame) {
     showGestureError('还没有检测到手部，无法导出手势帧。');
@@ -509,6 +574,7 @@ async function start() {
     await camera.openCamera();
     if (camera.faceActive) showOk('摄像头已开启，等待人脸。');
     else showError('人脸识别未能启动，请重试。');
+    void startMesh();
     await listDevices();
   } catch (error) {
     showError(describeError(error));
@@ -521,6 +587,7 @@ async function start() {
 
 function stop() {
   stopGestures();
+  stopMesh();
   camera.stop();
   frameStamps = [];
   setToggleState();
@@ -536,6 +603,8 @@ async function restartCamera() {
     await camera.openCamera();
     await listDevices();
     if (camera.faceActive) showOk('摄像头已重新开启。');
+    stopMesh();
+    void startMesh();
     if (gestureEnabledInput.checked && camera.streaming) void startGestures();
   } catch (error) {
     showError(describeError(error));
@@ -942,6 +1011,7 @@ async function boot() {
 
 window.addEventListener('beforeunload', () => {
   try { engine?.stop(); } catch { /* page is going away */ }
+  try { meshEngine?.stop(); } catch { /* page is going away */ }
 });
 
 window.addEventListener('unhandledrejection', event => {

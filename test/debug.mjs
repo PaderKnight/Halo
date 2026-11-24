@@ -177,6 +177,25 @@ try {
   assert.deepEqual(badErrors,[]);
   await bad.close();
 
+  // 网格引擎：请求模型、状态提示从「网格 —」变成「网格 N 张」
+  assert.ok(requested.some(pathname => pathname === '/models/face_landmarker.task'), 'face landmarker model requested');
+  await page.waitForFunction(() => /网格 \d+ 张/.test(document.querySelector('#mesh-note')?.textContent || ''), null, { timeout: 120000 });
+  await page.locator('#toggle').click();
+  await page.waitForFunction(() => (document.querySelector('#mesh-note')?.textContent || '').includes('网格 —'));
+  assert.deepEqual(errors, [], 'no page errors while starting and stopping the mesh');
+
+  // 模型不可用 → 降级为「框 + 68 点」，不抛未捕获异常
+  const fallback = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const fallbackErrors = [];
+  fallback.on('pageerror', error => fallbackErrors.push(error.message));
+  await fallback.addInitScript(fakeCamera);
+  await fallback.route('**/models/face_landmarker.task', route => route.abort());
+  await fallback.goto(url + '/debug.html');
+  await fallback.locator('#toggle').click();
+  await fallback.waitForFunction(() => (document.querySelector('#mesh-note')?.textContent || '').includes('网格未启用'), null, { timeout: 60000 });
+  assert.deepEqual(fallbackErrors, [], 'mesh failure degrades without page errors');
+  await fallback.close();
+
   console.log('PASS debug page loads camera, tuning, standalone assets, sample guard and gesture panel');
   await page.close();
 } finally {

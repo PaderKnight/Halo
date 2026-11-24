@@ -1,3 +1,7 @@
+const VISION_PATH = '/mediapipe/vision_bundle.mjs';
+const WASM_PATH = '/mediapipe/wasm';
+const MODEL_PATH = '/models/face_landmarker.task';
+
 function finitePoint(point) {
   return Number.isFinite(point?.x) && Number.isFinite(point?.y);
 }
@@ -98,4 +102,100 @@ export function drawFaceMesh(context, faces, {
   context.restore();
 
   return total;
+}
+
+export class FaceMeshEngine {
+  constructor(video, { onFrame = () => {}, onError = () => {}, intervalMs = 66 } = {}) {
+    this.video = video;
+    this.onFrame = typeof onFrame === 'function' ? onFrame : () => {};
+    this.onError = typeof onError === 'function' ? onError : () => {};
+    this.intervalMs = Number.isFinite(intervalMs) ? Math.max(0, intervalMs) : 66;
+    this.faceLandmarker = null;
+    this.connections = [];
+    this.timer = null;
+    this.lastTimestamp = -1;
+    this._running = false;
+    this._generation = 0;
+  }
+
+  get running() {
+    return this._running;
+  }
+
+  async start() {
+    if (this._running) return;
+    const token = this._generation;
+    const api = await import(VISION_PATH);
+    const fileset = await api.FilesetResolver.forVisionTasks(WASM_PATH);
+    const landmarker = await api.FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: MODEL_PATH, delegate: 'CPU' },
+      runningMode: 'VIDEO',
+      numFaces: 1,
+      outputFaceBlendshapes: false,
+      outputFacialTransformationMatrixes: false,
+    });
+    // stop() may have been called while the wasm runtime and model were loading.
+    if (token !== this._generation) {
+      try { landmarker.close?.(); } catch (error) { console.error('人脸网格模型关闭失败', error); }
+      return;
+    }
+    this.faceLandmarker = landmarker;
+    this.connections = api.FaceLandmarker.FACE_LANDMARKS_TESSELATION;
+    this._running = true;
+    this.lastTimestamp = -1;
+    this._schedule(0);
+  }
+
+  stop() {
+    this._generation += 1;
+    this._running = false;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    const landmarker = this.faceLandmarker;
+    this.faceLandmarker = null;
+    if (landmarker) {
+      try { landmarker.close?.(); } catch (error) { console.error('人脸网格模型关闭失败', error); }
+    }
+  }
+
+  _schedule(delay) {
+    if (!this._running) return;
+    clearTimeout(this.timer);
+    const wait = Number.isFinite(delay) ? delay : this.intervalMs;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this._tick();
+    }, Math.max(0, wait));
+  }
+
+  _tick() {
+    if (!this._running) return;
+    try {
+      this._detect();
+    } catch (error) {
+      // A broken frame must never escape as an uncaught exception.
+      console.error('人脸网格检测循环失败', error);
+      this.stop();
+      try { this.onError(error); } catch (callbackError) { console.error('人脸网格停止回调失败', callbackError); }
+      return;
+    }
+    this._schedule(this.intervalMs);
+  }
+
+  _detect() {
+    const video = this.video;
+    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+    let at = performance.now();
+    if (!(at > this.lastTimestamp)) at = this.lastTimestamp + 1;
+    this.lastTimestamp = at;
+
+    const detectStarted = performance.now();
+    const result = this.faceLandmarker?.detectForVideo(video, at);
+    const detectMs = Math.round(performance.now() - detectStarted);
+    const landmarksList = Array.isArray(result?.faceLandmarks) ? result.faceLandmarks : [];
+    const faces = landmarksList.map(landmarks => ({ landmarks }));
+    this.onFrame({ faces, timings: { detectMs }, connections: this.connections });
+  }
 }
