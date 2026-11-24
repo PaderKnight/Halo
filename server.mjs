@@ -102,6 +102,7 @@ if (fs.existsSync(mpPkg)) {
     staticFiles.set('/mediapipe/wasm/' + name, path.relative(root, path.join(mpPkg, 'wasm', name)));
 }
 staticFiles.set('/models/hand_landmarker.task', 'public/models/hand_landmarker.task');
+staticFiles.set('/models/face_landmarker.task', 'public/models/face_landmarker.task');
 const types = { '.webp':'image/webp','.livliv':'application/octet-stream','.md':'text/plain; charset=utf-8', '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8',
   '.jpg':'image/jpeg','.png':'image/png','.bin':'application/octet-stream','.json':'application/json',
   '.mjs':'text/javascript; charset=utf-8','.wasm':'application/wasm','.task':'application/octet-stream' };

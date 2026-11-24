@@ -15,6 +15,9 @@ test('mediapipe runtime and hand model are served locally', async () => {
   assert.equal(fs.statSync(model).size, 7819105);
   // MediaPipe .task 是带 2 字节前缀的 zip：00 00 50 4b
   assert.equal(fs.readFileSync(model).subarray(2, 4).toString(), 'PK');
+  const faceModel = path.join(root, 'public/models/face_landmarker.task');
+  assert.ok(fs.statSync(faceModel).size > 3_000_000);
+  assert.equal(fs.readFileSync(faceModel).subarray(2, 4).toString(), 'PK');
   assert.ok(fs.existsSync(path.join(root, 'node_modules/@mediapipe/tasks-vision/vision_bundle.mjs')));
 
   const port = '4331';
@@ -31,6 +34,7 @@ test('mediapipe runtime and hand model are served locally', async () => {
       ['/mediapipe/wasm/vision_wasm_internal.js', /^text\/javascript/],
       ['/mediapipe/wasm/vision_wasm_internal.wasm', /^application\/wasm/],
       ['/models/hand_landmarker.task', /^application\/octet-stream/],
+      ['/models/face_landmarker.task', /^application\/octet-stream/],
     ];
     for (const [route, type] of cases) {
       const res = await fetch(base + route);
