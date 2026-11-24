@@ -1,4 +1,5 @@
-import { Camera, DEFAULT_FACE_TUNING, loadFaceTuning, enrolled, remember, forget, addSample } from './camera.js';
+import { Camera, DEFAULT_FACE_TUNING, SAMPLE_MAX_DISTANCE, loadFaceTuning, enrolled, remember, forget, addSample, analyzeImage, templateSamples } from './camera.js';
+import { distance } from './match.js';
 import { GestureEngine } from './gesture.js';
 import { DEFAULT_GESTURE_SETTINGS } from './gesture-rules.js';
 
@@ -19,7 +20,11 @@ const scoresBox = $('scores');
 const statusBox = $('status');
 const sampleNote = $('sample-note');
 const enrollList = $('enroll-list');
+const newMemberName = $('new-member-name');
+const addMemberButton = $('add-member');
 const importInput = $('import-templates');
+const photoInput = $('photo-input');
+const photoNote = $('photo-note');
 const gestureToggle = $('gesture-toggle');
 const gestureEnabledInput = $('gesture-enabled');
 const gestureState = $('gesture-state');
@@ -233,6 +238,20 @@ function renderScores(payload) {
     }
     scoresBox.append(row);
   }
+  const best = scores[0];
+  const second = scores[1];
+  const margin = Number(payload?.margin);
+  let verdict;
+  if (payload?.match) verdict = `已匹配 ${profileNames.get(payload.match) || payload.match}`;
+  else if (Number.isFinite(best?.score) && Number.isFinite(threshold) && best.score > threshold)
+    verdict = `未达阈值（${formatScore(best.score)} > ${formatScore(threshold)}）`;
+  else if (second && Number.isFinite(second.score) && Number.isFinite(best?.score) && Number.isFinite(margin) && second.score - best.score < margin)
+    verdict = `与第二名差距不足（${formatScore(second.score - best.score)} < ${formatScore(margin)}）`;
+  else verdict = '匹配结果为空';
+  const summary = document.createElement('p');
+  summary.className = 'score-summary';
+  summary.textContent = `结论：${verdict}`;
+  scoresBox.append(summary);
 }
 
 function drawOverlay(detections) {
@@ -568,12 +587,25 @@ function memberCount(id) {
   }
 }
 
+function updateMemberOption(id) {
+  const option = [...enrollList.options].find(item => item.value === id);
+  if (!option) return;
+  const name = profileNames.get(id) || id;
+  const count = memberCount(id);
+  option.textContent = count ? `${name} · ${count} 组` : name;
+}
+
+function updateAllMemberOptions() {
+  for (const option of enrollList.options) if (option.value) updateMemberOption(option.value);
+}
+
 function updateMemberState() {
   const id = enrollList.value;
   if (!id) {
     sampleNote.textContent = '';
     return;
   }
+  updateMemberOption(id);
   const name = profileNames.get(id) || id;
   const saved = enrolled(id) && memberCount(id);
   const waiting = pending.get(id)?.length || 0;
@@ -600,12 +632,85 @@ async function loadProfiles() {
       option.value = profile.id;
       option.textContent = profile.name || profile.id;
       enrollList.append(option);
+      updateMemberOption(profile.id);
     }
     if ([...enrollList.options].some(option => option.value === previous)) enrollList.value = previous;
     updateMemberState();
   } catch (error) {
     showError('读取成员列表失败：' + describeError(error));
   }
+}
+
+async function createMember(name) {
+  const response = await fetch('/api/profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: '', name, repos: [] }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw Error(data.error || '添加成员失败。');
+  return data;
+}
+
+async function addMember() {
+  const name = newMemberName.value.trim();
+  if (!name) {
+    sampleNote.textContent = '请输入新成员名字。';
+    newMemberName.focus();
+    return;
+  }
+  addMemberButton.disabled = true;
+  try {
+    const data = await createMember(name);
+    newMemberName.value = '';
+    await loadProfiles();
+    if ([...enrollList.options].some(option => option.value === data.id)) enrollList.value = data.id;
+    updateMemberState();
+    sampleNote.textContent = `已添加成员 ${data.name || name}，可以开始采集人脸。`;
+  } catch (error) {
+    showSampleError('添加成员失败：' + describeError(error));
+  } finally {
+    addMemberButton.disabled = false;
+  }
+}
+
+async function importPhotos(files) {
+  if (!files?.length) return;
+  const results = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    photoNote.textContent = `正在处理 ${index + 1}/${files.length}：${file.name}`;
+    const name = file.name.replace(/\.[^.]+$/, '').trim().slice(0, 20);
+    try {
+      if (!name) throw Error('文件名为空');
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      const found = await analyzeImage(canvas, tuning);
+      if (!found.length) throw Error('未检测到人脸');
+      if (found.length > 1) throw Error('检测到多张脸，请换单人照');
+      let profile = profiles.find(item => item.name === name);
+      if (!profile) {
+        profile = await createMember(name);
+        profiles.push(profile);
+      }
+      const existing = templateSamples(profile.id);
+      if (existing.length >= 3) throw Error('已有 3 组特征，请先清除');
+      const next = addSample(existing, found[0].descriptor);
+      if (!next.length) throw Error('与已有样本差异过大');
+      remember(profile.id, next);
+      results.push(`${name}：已保存 ${next.length} 组`);
+    } catch (error) {
+      results.push(`${file.name}：跳过（${describeError(error)}）`);
+    }
+  }
+  await loadProfiles();
+  photoNote.textContent = results.join('；');
+  photoInput.value = '';
 }
 
 function captureSample() {
@@ -627,7 +732,11 @@ function captureSample() {
   }
   const next = addSample(current, face);
   if (!next.length) {
-    sampleNote.textContent = '这张脸与已采集样本差异过大，请调整姿势后重试。';
+    const closest = Math.min(...current.map(other => distance(other, face)));
+    const hint = Number.isFinite(closest)
+      ? `最近距离 ${closest.toFixed(2)}，采集门槛 ${SAMPLE_MAX_DISTANCE.toFixed(2)}。`
+      : '';
+    sampleNote.textContent = `这张脸与已采集样本差异过大（${hint}）请保持光线和距离、正对镜头重试，或点“重置本次采集”重新开始。`;
     return;
   }
   pending.set(id, next);
@@ -638,11 +747,24 @@ function captureSample() {
   try {
     remember(id, next);
     pending.delete(id);
+    updateMemberOption(id);
     sampleNote.textContent = `已保存 ${name} 的 3 组人脸特征。`;
   } catch (error) {
     pending.delete(id);
     showSampleError(describeError(error));
   }
+}
+
+function resetSamples() {
+  const id = enrollList.value;
+  if (!id) {
+    sampleNote.textContent = '请先选择成员。';
+    return;
+  }
+  pending.delete(id);
+  updateMemberState();
+  const name = profileNames.get(id) || id;
+  sampleNote.textContent = `已重置 ${name} 的本次采集，请重新采集 3 组。`;
 }
 
 function forgetMember() {
@@ -659,6 +781,7 @@ function forgetMember() {
   try {
     forget(id);
     pending.delete(id);
+    updateMemberOption(id);
     sampleNote.textContent = `已清除 ${name} 的人脸特征。`;
   } catch (error) {
     showSampleError('清除特征失败：' + describeError(error));
@@ -691,6 +814,7 @@ async function importTemplates(file) {
     localStorage.setItem(TEMPLATES_KEY, JSON.stringify(bank));
     pending.clear();
     sampleNote.textContent = '已导入人脸特征。';
+    updateAllMemberOptions();
     updateMemberState();
   } catch (error) {
     showSampleError('导入特征失败：' + describeError(error));
@@ -704,6 +828,7 @@ function clearTemplates() {
     localStorage.removeItem(TEMPLATES_KEY);
     pending.clear();
     sampleNote.textContent = '已清空全部人脸特征。';
+    updateAllMemberOptions();
     updateMemberState();
   } catch (error) {
     showSampleError('清空特征失败：' + describeError(error));
@@ -755,11 +880,19 @@ function wireEvents() {
   });
 
   enrollList.addEventListener('change', updateMemberState);
+  addMemberButton.addEventListener('click', () => void addMember());
+  newMemberName.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    void addMember();
+  });
   $('capture-sample').addEventListener('click', captureSample);
+  $('reset-samples').addEventListener('click', resetSamples);
   $('forget-member').addEventListener('click', forgetMember);
   $('export-templates').addEventListener('click', exportTemplates);
   $('clear-templates').addEventListener('click', clearTemplates);
   importInput.addEventListener('change', () => void importTemplates(importInput.files?.[0]));
+  photoInput.addEventListener('change', () => void importPhotos(Array.from(photoInput.files || [])));
 
   gestureToggle.addEventListener('click', toggleGestures);
   gestureEnabledInput.addEventListener('change', () => {

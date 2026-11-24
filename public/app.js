@@ -4,6 +4,7 @@ import { coverMotion, showBoard } from './motion.js';
 import { createDashboard } from './dashboard.js';
 import { greet } from './avatar.js';
 import { resolveGestureAction } from './gesture-rules.js';
+import { mapToScreen, PointerController, pointerContextAllowed, isCalibrationCurrent } from './pointer-rules.js';
 
 const $ = id => document.getElementById(id);
 const fmt = (v, options) => new Intl.DateTimeFormat('zh-CN', options).format(new Date(v));
@@ -14,17 +15,149 @@ let profileSequence = 0, sessionSequence = 0, wallSequence = 0, lastAction = Dat
 let consecutive = 0, lastMatch = null, ignored = null, absentSince = 0;
 let starting = false, noticeTimer, cameraMessage = '', lastRender = '';
 let gesture = null, gestureStarting = false, navAt = 0;
+let pointer = null, pointerSettings = null, hoverEl = null, pointerState = null, pointerCoolingUntil = 0;
+const cursor = $('gesture-cursor');
 const camera = new Camera(video, onFrame, error => {
   localStorage.removeItem('morning.camera');
   starting = false;
   cameraMessage = error;
   gesture?.stop(); gesture = null;
+  stopPointerVisuals();
   if (enrollment) { enrollment.collect = false; $('slot').dataset.capturing='false'; message(error); }
   if (personal?.via === 'camera' || candidate?.via === 'camera') home();
   render();
   notify(error);
 });
 const gestureEnabled = () => { try { return localStorage.getItem('morning.gesture.enabled') !== 'off'; } catch { return true; } };
+const POINTER_KEY = 'morning.gesture.pointer';
+const CALIBRATION_KEYS = ['a', 'b', 'c', 'd', 'e', 'f'];
+function currentFingerprint() {
+  let device = '', size = '';
+  try { device = localStorage.getItem('morning.camera.device') || ''; } catch { device = ''; }
+  try { size = localStorage.getItem('morning.camera.size') || '1280x720'; } catch { size = '1280x720'; }
+  return { device, size };
+}
+function loadPointerSettings() {
+  let saved = {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(POINTER_KEY) || 'null');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) saved = parsed;
+  } catch { saved = {}; }
+  const mirror = saved.mirror !== false;
+  let calibration = null;
+  const raw = saved.calibration;
+  if (raw && typeof raw === 'object' && CALIBRATION_KEYS.every(key => Number.isFinite(raw[key]))) {
+    if (isCalibrationCurrent(saved.camera, currentFingerprint())) {
+      calibration = Object.fromEntries(CALIBRATION_KEYS.map(key => [key, raw[key]]));
+    } else {
+      console.warn('手势指针标定与当前摄像头不匹配，已回退默认映射。');
+    }
+  } else if (raw) {
+    console.warn('手势指针标定数据无效，已回退默认映射。');
+  }
+  return {
+    mirror,
+    calibration,
+    camera: saved.camera && typeof saved.camera === 'object' ? saved.camera : null,
+  };
+}
+function stopPointerVisuals() {
+  pointer?.reset();
+  pointerState = null;
+  hideCursor();
+}
+function showCursor() {
+  if (!cursor) return;
+  cursor.hidden = false;
+  try {
+    if (!cursor.matches(':popover-open')) cursor.showPopover();
+  } catch (error) {
+    console.warn('手势光标不可用', error);
+  }
+}
+function hideCursor() {
+  if (!cursor) return;
+  try {
+    if (cursor.matches(':popover-open')) cursor.hidePopover();
+  } catch { /* popover state already closed */ }
+  cursor.hidden = true;
+  cursor.classList.remove('dwelling');
+  cursor.style.setProperty('--progress', '0');
+  if (hoverEl) { hoverEl.classList.remove('gesture-hover'); hoverEl = null; }
+  pointerState = null;
+}
+function resolvePointerTarget(element) {
+  if (!element || typeof element.closest !== 'function') return null;
+  const item = element.closest('[data-gesture-item]');
+  if (item) {
+    const [kind, moduleId, pageIndex] = (item.dataset.gestureItem || '').split(':');
+    const index = Number(pageIndex);
+    if (kind && moduleId && Number.isFinite(index)) {
+      return { type: 'item', moduleId, index, key: 'item:' + moduleId + ':' + index, element: item };
+    }
+  }
+  const card = element.closest('[data-gesture-card]');
+  if (card) {
+    const moduleId = card.dataset.gestureCard;
+    if (moduleId) return { type: 'card', moduleId, index: 0, key: 'card:' + moduleId, element: card };
+  }
+  if (dialog === 'info') {
+    const keyed = element.closest('[data-gesture-key]');
+    if (keyed && keyed.dataset.gestureKey) {
+      return { type: 'info', key: keyed.dataset.gestureKey, element: keyed };
+    }
+  }
+  return null;
+}
+function renderPointer(result, target) {
+  if (!cursor) return;
+  if (!result || !result.visible) { hideCursor(); return; }
+  showCursor();
+  cursor.style.transform = 'translate3d(' + Math.round(result.x) + 'px,' + Math.round(result.y) + 'px,0)';
+  const cooling = performance.now() < pointerCoolingUntil;
+  const progress = cooling ? 0 : Math.min(1, Math.max(0, Number.isFinite(result.progress) ? result.progress : 0));
+  cursor.style.setProperty('--progress', String(progress));
+  cursor.classList.toggle('dwelling', Boolean(result.key));
+  const next = result.key && target && target.element ? target.element : null;
+  if (hoverEl !== next) {
+    if (hoverEl) hoverEl.classList.remove('gesture-hover');
+    if (next) next.classList.add('gesture-hover');
+    hoverEl = next;
+  }
+}
+function activatePointerTarget(target) {
+  if (!target) return;
+  navAt = Date.now();
+  pointer?.reset();
+  hideCursor();
+  if (target.type === 'info') target.element.click();
+  else dashboard.openInfo(target.moduleId, target.index);
+}
+function handleGestureFrame(frame) {
+  if (!pointer || !pointerSettings || !pointerContextAllowed({ dialog, enabled: gestureEnabled(), streaming: camera.streaming })) {
+    stopPointerVisuals();
+    return;
+  }
+  if (Date.now() - navAt < 300) { stopPointerVisuals(); return; }
+  const raw = frame?.pointer;
+  const at = Number.isFinite(frame?.at) ? frame.at : performance.now();
+  const usable = raw?.active === true && Number.isFinite(raw.x) && Number.isFinite(raw.y);
+  let x = NaN, y = NaN, target = null;
+  if (usable) {
+    const norm = mapToScreen({ x: raw.x, y: raw.y }, pointerSettings.calibration, pointerSettings.mirror);
+    x = norm.x * (window.innerWidth - 1);
+    y = norm.y * (window.innerHeight - 1);
+    target = resolvePointerTarget(document.elementFromPoint(x, y));
+  }
+  const result = pointer.update({ x, y, active: usable, at, target: target ? { key: target.key, inside: true } : null });
+  pointerState = result;
+  if (result.click) {
+    const cooldown = Number.isFinite(pointer.settings?.pointerCooldownMs) ? pointer.settings.pointerCooldownMs : 800;
+    pointerCoolingUntil = at + cooldown;
+  }
+  renderPointer(result, target);
+  if (result.click && target) activatePointerTarget(target);
+}
 async function startGestures() {
   if (gesture || gestureStarting || !gestureEnabled() || !camera.streaming) return;
   gestureStarting = true;
@@ -32,20 +165,34 @@ async function startGestures() {
     const { GestureEngine } = await import('/gesture.js');
     let settings = {};
     try { settings = JSON.parse(localStorage.getItem('morning.gesture.tuning') || '{}'); } catch { settings = {}; }
-    const engine = new GestureEngine(video, { onEvent: handleGesture, settings });
+    pointerSettings = loadPointerSettings();
+    try { pointer = new PointerController({ settings }); }
+    catch (error) { pointer = null; console.warn('手势指针不可用', error); }
+    const engine = new GestureEngine(video, {
+      onEvent: handleGesture,
+      onFrame: handleGestureFrame,
+      onStop: stopPointerVisuals,
+      settings: { ...settings, mirror: pointerSettings.mirror },
+    });
     await engine.start();
-    if (!camera.streaming || !gestureEnabled()) { engine.stop(); return; }
+    if (!camera.streaming || !gestureEnabled()) { engine.stop(); stopPointerVisuals(); return; }
     gesture = engine;
     render();
   } catch (e) {
     console.warn('手势不可用', e);
     gesture = null;
+    stopPointerVisuals();
   } finally {
     gestureStarting = false;
   }
 }
 function handleGesture(event) {
   if (!wall || Date.now() - navAt < 300) return;
+  // A fist during a dwell cancels it and is consumed, so it cannot also leave the personal board.
+  if (event.type === 'fist' && dialog !== 'info' && pointerState?.progress > 0) {
+    stopPointerVisuals();
+    return;
+  }
   const action = resolveGestureAction(event, {
     enabled: gestureEnabled(),
     dialog,
@@ -54,10 +201,12 @@ function handleGesture(event) {
     faceActive: camera.faceActive,
   });
   if (action === 'confirm') $('yes')?.click();
-  else if (action === 'cancel') closeDialog();
+  else if (action === 'cancel' || action === 'closeInfo') closeDialog();
   else if (action === 'home') home();
   else if (action === 'resumeFace') void startFace();
   else if (action === 'greet') greet();
+  else if (action === 'pageNext') { dashboard.flipPage(1); pointer?.reset(); }
+  else if (action === 'pagePrev') { dashboard.flipPage(-1); pointer?.reset(); }
 }
 async function api(url, body) {
   const options = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
@@ -72,6 +221,8 @@ function notify(text) {
 }
 function message(text) { if ($('msg')) $('msg').textContent=text; }
 function setDialog(type, html) {
+  hideCursor();
+  pointer?.reset();
   dialog = type;
   modal.dataset.kind=type;
   coverMotion(true);
@@ -81,6 +232,8 @@ function setDialog(type, html) {
   else $('dialog-title')?.focus();
 }
 function closeDialog() {
+  hideCursor();
+  pointer?.reset();
   navAt = Date.now();
   if (candidate?.via === 'camera') ignored = candidate.id;
   if (enrollment) {
@@ -122,6 +275,11 @@ function cameraButtonLabel() {
   if (camera.faceActive) return gestureEnabled() ? '暂停人脸识别' : '关闭摄像头';
   return gestureEnabled() ? '开始人脸识别' : '关闭摄像头';
 }
+function gestureHint() {
+  return camera.streaming && gestureEnabled() && gesture?.running
+    ? '<p class="gesture-hint">手势：食指指向卡片并停留打开 · 信息窗内张开手左右翻页</p>'
+    : '';
+}
 const dashboard=createDashboard({api,setDialog,closeDialog,notify});
 function render() {
   if (!wall) return;
@@ -140,12 +298,12 @@ function render() {
   if (personal) {
     const d=brief.discovery;
     $('side').classList.add('personal-side');
-    $('side').innerHTML=`<div class="panel-head"><h2>今日发现</h2><span>订阅之外</span></div>${d?`<h3><a href="${esc(d.item.url)}" target="_blank" rel="noopener noreferrer">${esc(d.label)} ↗</a></h3><p>${esc(d.item.detailZh || d.note)}</p><div class="side-meta">${esc(d.group)} · ${esc(d.item.tag)}${d.error?' · 缓存':''}</div>`:'<p>暂时没有订阅之外的发布。</p>'}<button class="secondary" id="back">返回团队晨报</button>`;
+    $('side').innerHTML=`<div class="panel-head"><h2>今日发现</h2><span>订阅之外</span></div>${d?`<h3><a href="${esc(d.item.url)}" target="_blank" rel="noopener noreferrer">${esc(d.label)} ↗</a></h3><p>${esc(d.item.detailZh || d.note)}</p><div class="side-meta">${esc(d.group)} · ${esc(d.item.tag)}${d.error?' · 缓存':''}</div>`:'<p>暂时没有订阅之外的发布。</p>'}<button class="secondary" id="back">返回团队晨报</button>${gestureHint()}`;
     $('back').onclick=home;
   } else {
     const demoOnly=wall.profiles.length===1 && wall.profiles[0].id==='demo';
     $('side').classList.remove('personal-side');
-    $('side').innerHTML=`<div class="panel-head"><h2>我的简报</h2></div><p>确认身份后，查看你的天气、日程和关注内容。</p><button class="primary" id="manual">${demoOnly?'体验示例简报':'选择成员简报'}</button><div class="camera-control"><span class="statusline"><i class="indicator ${camera.streaming?'':'off'}"></i>${esc(cameraStatus())}</span><button class="textbtn" id="cam" ${starting?'disabled':''}>${cameraButtonLabel()}</button></div>`;
+    $('side').innerHTML=`<div class="panel-head"><h2>我的简报</h2></div><p>确认身份后，查看你的天气、日程和关注内容。</p><button class="primary" id="manual">${demoOnly?'体验示例简报':'选择成员简报'}</button><div class="camera-control"><span class="statusline"><i class="indicator ${camera.streaming?'':'off'}"></i>${esc(cameraStatus())}</span><button class="textbtn" id="cam" ${starting?'disabled':''}>${cameraButtonLabel()}</button></div>${gestureHint()}`;
     $('manual').onclick=()=>demoOnly ? confirmPerson(wall.profiles[0],'manual') : choose();
     $('cam').onclick=async()=>{
       if (!camera.streaming) {
@@ -314,5 +472,5 @@ try {
   }
 } catch(e){$('tiles').textContent='暂时无法读取简报，将自动重试。';notify(e.message);}
 setInterval(()=>loadWall().catch(()=>{lastRender='';$('robot-text').textContent='等待本机服务';}),5000);
-window.addEventListener('pagehide',()=>{gesture?.stop();camera.stop();});
+window.addEventListener('pagehide',()=>{gesture?.stop();camera.stop();stopPointerVisuals();});
 

@@ -1,4 +1,6 @@
-import { analyzeHand, GestureStateMachine, DEFAULT_GESTURE_SETTINGS } from './gesture-rules.js';
+import {
+  analyzeHand, GestureStateMachine, DEFAULT_GESTURE_SETTINGS, mirrorX,
+} from './gesture-rules.js';
 
 const VISION_PATH = '/mediapipe/vision_bundle.mjs';
 const WASM_PATH = '/mediapipe/wasm';
@@ -14,6 +16,7 @@ export class GestureEngine {
       ...DEFAULT_GESTURE_SETTINGS,
       ...(settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {}),
     };
+    this.mirror = this.settings.mirror !== false;
     this.machine = new GestureStateMachine(this.settings);
     this.handLandmarker = null;
     this.timer = null;
@@ -29,6 +32,7 @@ export class GestureEngine {
   updateSettings(partial) {
     if (!partial || typeof partial !== 'object' || Array.isArray(partial)) return;
     this.settings = { ...this.settings, ...partial };
+    this.mirror = this.settings.mirror !== false;
     this.machine.updateSettings(partial);
   }
 
@@ -118,17 +122,35 @@ export class GestureEngine {
       if (!driver || score > driver.score) driver = { handedness, score, analysis };
     }
 
-    const pose = driver?.analysis?.pose ?? null;
-    const confidence = driver ? driver.analysis.ruleScore * driver.score : 0;
+    const analysis = driver?.analysis;
+    const pose = analysis?.pose ?? null;
+    const confidence = driver ? analysis.ruleScore * driver.score : 0;
+    const palmX = Number.isFinite(analysis?.palmX) ? analysis.palmX : NaN;
+    const palmY = Number.isFinite(analysis?.palmY) ? analysis.palmY : NaN;
+    const swipeX = Number.isFinite(palmX) ? mirrorX(palmX, this.mirror) : NaN;
     const events = this.machine.push({
       pose,
       confidence,
-      palmX: driver?.analysis?.palmX ?? NaN,
+      palmX,
+      palmY,
+      swipeX,
       hand: driver?.handedness ?? '',
       at,
     });
 
-    this.onFrame({ hands, pose, confidence, at, timings: { detectMs }, progress: this.machine.progress });
+    this.onFrame({
+      hands,
+      pose,
+      confidence,
+      at,
+      timings: { detectMs },
+      progress: this.machine.progress,
+      pointer: {
+        x: analysis?.tipX ?? NaN,
+        y: analysis?.tipY ?? NaN,
+        active: pose === 'point',
+      },
+    });
     for (const event of events) this.onEvent(event);
   }
 }

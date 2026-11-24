@@ -40,9 +40,10 @@
   </div>
   <footer><div class="foot-status"><span class="robot"><i></i><span id="robot-text">正在连接</span></span><span id="sync-time">等待首次整理</span></div><button id="sync" class="linkbtn">立即整理</button></footer>
 </main>
-<dialog id="modal"><div class="dialog-inner"><button class="close" id="close" aria-label="关闭弹窗">×</button><div id="dialog-body"></div></div></dialog>
+<dialog id="modal"><div class="dialog-inner"><button class="close" id="close" aria-label="关闭弹窗" data-gesture-key="info:close">×</button><div id="dialog-body"></div></div></dialog>
 <div id="camera-stage" class="camera-dock"><video id="video" muted autoplay playsinline></video></div>
 <div id="notice" role="status" aria-live="polite"></div>
+<div id="gesture-cursor" popover="manual" aria-hidden="true"><span class="gesture-cursor-ring"></span><span class="gesture-cursor-dot"></span></div>
 <script src="/app.js" type="module"></script>
 </body></html>
 

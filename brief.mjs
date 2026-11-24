@@ -16,7 +16,7 @@ export const defaultProfile = { id: 'demo', name: '示例成员', repos: ['ollam
 export function validateProfile(input) {
   if (typeof input?.name !== 'string' || !Array.from(input.name.trim()).length || Array.from(input.name.trim()).length > 20)
     throw Error('请输入 1 至 20 个字的成员名字。');
-  if (!Array.isArray(input.repos) || !input.repos.length || input.repos.length > 8) throw Error('请选择 1 至 8 个项目。');
+  if (!Array.isArray(input.repos) || input.repos.length > 8) throw Error('最多选择 8 个项目。');
   const repos = input.repos.map(s => typeof s === 'string' ? s.trim().toLowerCase() : '');
   if (repos.some(s => !/^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/.test(s) || ['.', '..'].includes(s.split('/')[1])))
     throw Error('项目请按 owner/repo 格式填写。');

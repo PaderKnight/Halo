@@ -91,6 +91,8 @@ select:focus-visible, button:focus-visible, input:focus-visible {
   border: 1px solid var(--line);
   background: #000;
   line-height: 0;
+  /* 仅镜像展示；送入 face-api / MediaPipe 的帧保持原样，判定与手性不受影响 */
+  transform: scaleX(-1);
 }
 
 #video, #overlay { display: block; }
@@ -165,6 +167,8 @@ select:focus-visible, button:focus-visible, input:focus-visible {
 .sliders output { color: var(--text); font-variant-numeric: tabular-nums; }
 
 .row { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+
+.hint { margin: 0; color: var(--muted); font-size: 12px; }
 
 .row .file { padding-bottom: 0; }
 

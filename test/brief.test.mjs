@@ -36,9 +36,10 @@ test('discovery uses adjacent unsubscribed sources, is stable in an edition and 
   assert.deepEqual(a,makeBrief(defaultProfile,feeds,'2026-11-22'));
   assert.equal(makeBrief({...defaultProfile,repos:catalog.map(s=>s.repo)},feeds,'2026-11-22').discovery,null);
 });
-test('subscriptions accept public project coordinates; invalid paths and empty selections fail',()=>{
+test('subscriptions accept public project coordinates; empty selections are allowed for face-only members',()=>{
   assert.deepEqual(validateProfile({name:' 松子 ',repos:['Apple/Example','apple/example']}),{name:'松子',repos:['apple/example']});
-  for(const repos of [[],['a/..'],['https://localhost/x'],['a/b/c']]) assert.throws(()=>validateProfile({name:'A',repos}));
+  assert.deepEqual(validateProfile({name:'小禾',repos:[]}),{name:'小禾',repos:[]});
+  for(const repos of [['a/..'],['https://localhost/x'],['a/b/c']]) assert.throws(()=>validateProfile({name:'A',repos}));
 });
 test('stable identity requires a close, unambiguous match and consistent enrollment samples',()=>{
   const vec=v=>Array(128).fill(v), a=vec(0), b=vec(.05);

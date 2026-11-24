@@ -57,6 +57,8 @@ try {
   await page.locator('#video').waitFor();
   await page.waitForFunction(()=>document.querySelector('#video').videoWidth>0);
   assert.ok(await page.locator('#overlay').isVisible());
+  // 预览镜像：视频与叠加层一起翻转，模型输入不受影响
+  assert.equal(await page.locator('.stage').evaluate(el=>getComputedStyle(el).transform),'matrix(-1, 0, 0, 1, 0, 0)');
   assert.equal(await page.locator('#match-threshold').inputValue(),'0.48');
   assert.equal(await page.locator('#margin').inputValue(),'0.07');
   await page.locator('#match-threshold').evaluate(el=>{el.value='0.55';el.dispatchEvent(new Event('input',{bubbles:true}));});
@@ -67,6 +69,52 @@ try {
   await page.waitForFunction(()=>[...document.querySelectorAll('#device option')].some(option=>option.value==='fake-1'));
   assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#device option')].some(option=>/^camera-\d+$/.test(option.value))),false);
   assert.equal(await page.evaluate(()=>localStorage.getItem('morning.camera.device')),null);
+
+  // 新增成员：允许 0 个订阅，便于连续采集多人
+  await page.locator('#new-member-name').fill('阿蓝');
+  await page.locator('#add-member').click();
+  await page.waitForFunction(()=>{
+    const select=document.querySelector('#enroll-list');
+    const option=[...select.options].find(item=>item.textContent==='阿蓝');
+    return !!option&&select.value===option.value;
+  });
+  const addedId=await page.locator('#enroll-list').inputValue();
+  assert.ok(addedId,'new member is selected after adding');
+  const addedBrief=await page.evaluate(id=>fetch('/api/brief?id='+encodeURIComponent(id)).then(r=>r.json()),addedId);
+  assert.deepEqual(addedBrief.profile.repos,[]);
+  assert.match(await page.locator('#sample-note').innerText(),/已添加成员/);
+  await page.locator('#new-member-name').fill('阿蓝');
+  await page.locator('#add-member').click();
+  await page.waitForFunction(()=>document.querySelector('#sample-note').textContent.includes('这个名字已在使用'));
+
+  // 本次采集可以重置，避免一个坏样本卡死后续采集
+  await page.locator('#reset-samples').click();
+  await page.waitForFunction(()=>document.querySelector('#sample-note').textContent.includes('已重置'));
+
+  // 从照片批量录入：合影应跳过，不创建成员
+  const samplePhoto=fs.readFileSync(path.join(root,'node_modules/@vladmandic/face-api/demo/sample3.jpg')).toString('base64');
+  await page.locator('#photo-input').setInputFiles({name:'合影.jpg',mimeType:'image/jpeg',buffer:Buffer.from(samplePhoto,'base64')});
+  await page.waitForFunction(()=>document.querySelector('#photo-note').textContent.includes('检测到多张脸'),{},{timeout:120000});
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#enroll-list option')].some(option=>option.textContent.startsWith('合影'))),false);
+
+  // 单人照命名为姓名后即可保存
+  const singleFace=await page.evaluate(async b64=>{
+    const img=new Image();img.src='data:image/jpeg;base64,'+b64;await img.decode();
+    const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;
+    const width=img.width*0.27,height=width*0.75;
+    canvas.getContext('2d').drawImage(img,img.width*0.63-width/2,img.height*0.26-height/2,width,height,0,0,640,480);
+    return canvas.toDataURL('image/png').split(',')[1];
+  },samplePhoto);
+  await page.locator('#photo-input').setInputFiles({name:'批量测试.png',mimeType:'image/png',buffer:Buffer.from(singleFace,'base64')});
+  await page.waitForFunction(()=>document.querySelector('#photo-note').textContent.includes('已保存'),{},{timeout:120000});
+  await page.waitForFunction(()=>[...document.querySelectorAll('#enroll-list option')].some(option=>option.textContent.startsWith('批量测试')&&option.textContent.includes('1 组')));
+
+  // 无脸照片应跳过，且不创建成员
+  const blank=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;canvas.getContext('2d').fillRect(0,0,640,480);return canvas.toDataURL('image/png').split(',')[1];});
+  await page.locator('#photo-input').setInputFiles({name:'空白.png',mimeType:'image/png',buffer:Buffer.from(blank,'base64')});
+  await page.waitForFunction(()=>document.querySelector('#photo-note').textContent.includes('未检测到人脸'),{},{timeout:60000});
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#enroll-list option')].some(option=>option.textContent.startsWith('空白'))),false);
+
   assert.deepEqual(errors,[]);
 
   // The page is standalone: the main wall scripts and styles are never requested.

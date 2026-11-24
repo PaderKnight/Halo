@@ -76,7 +76,12 @@
             <option value="">选择成员</option>
           </select>
         </label>
+        <label>新增成员
+          <input id="new-member-name" maxlength="20" placeholder="名字">
+        </label>
+        <button type="button" id="add-member">添加成员</button>
         <button type="button" id="capture-sample">采集当前人脸</button>
+        <button type="button" id="reset-samples">重置本次采集</button>
         <button type="button" id="forget-member">清除所选成员</button>
         <button type="button" id="export-templates">导出特征</button>
         <label class="file">导入特征
@@ -84,6 +89,17 @@
         </label>
         <button type="button" id="clear-templates">清空全部特征</button>
       </div>
+    </section>
+
+    <section class="samples" aria-label="从照片批量录入">
+      <h2>从照片批量录入</h2>
+      <div class="row">
+        <label class="file">照片（文件名即姓名）
+          <input id="photo-input" type="file" accept="image/*" multiple>
+        </label>
+      </div>
+      <p class="hint">每人一张单人照，文件名用姓名，例如 李建彤.jpg；多张脸的照片会跳过。照片只在本地处理。</p>
+      <p id="photo-note" class="status" role="status"></p>
     </section>
 
     <section id="gesture-panel" class="gesture" aria-label="手势">

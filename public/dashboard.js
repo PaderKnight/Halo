@@ -11,7 +11,7 @@ function weatherSymbol(code){return code===149?'≋':code===113?'☀':code===116
 function condition(text){const words={'Smoky haze':'霾','Haze':'霾','Clear':'晴','Sunny':'晴','Partly cloudy':'局部多云','Cloudy':'多云','Overcast':'阴','Mist':'薄雾','Fog':'雾','Light rain':'小雨','Moderate rain':'中雨','Heavy rain':'大雨','Light drizzle':'毛毛雨','Light snow':'小雪','Patchy rain nearby':'局部有雨'};return words[text]||text;}
 function href(item,label){return '<a href="'+esc(item.url)+'" title="'+esc(label||item.title)+'" target="_blank" rel="noopener noreferrer">'+esc(label||item.title)+'</a>';}
 export function createDashboard({api,setDialog,closeDialog,notify}) {
-  let scope='public',data,wall,profile,request=0,pending=false,last='',calendarDraft;
+  let scope='public',data,wall,profile,request=0,pending=false,last='',calendarDraft,info=null;
   function context(){return scope==='public'?'团队公共屏':(profile?.profile.name||'成员')+'的个人屏';}
   function empty(text,action,id){return '<div class="widget-empty"><p>'+esc(text)+'</p>'+(action?'<button class="textbtn" data-edit="'+id+'">'+esc(action)+'</button>':'')+'</div>';}
   function eventsFor(m){
@@ -25,13 +25,13 @@ export function createDashboard({api,setDialog,closeDialog,notify}) {
     if(m.type==='news'){
       if(!d)return empty(m.loading?'正在整理新闻…':'新闻源暂不可用，稍后自动重试','设置栏目',m.id);
       const items=d.items.filter(item=>matches(item.title,c.keyword));
-      return items.length?'<ol class="news-list">'+items.slice(0,3).map(item=>'<li>'+href(item)+'<time>'+esc(stamp(item.publishedAt))+'</time></li>').join('')+'</ol>':empty('当前栏目没有匹配的新闻','调整关键词',m.id);
+      return items.length?'<ol class="news-list">'+items.slice(0,3).map((item,index)=>'<li data-gesture-item="news:'+m.id+':'+index+'">'+href(item)+'<time>'+esc(stamp(item.publishedAt))+'</time></li>').join('')+'</ol>':empty('当前栏目没有匹配的新闻','调整关键词',m.id);
     }
     if(m.type==='agenda'){
       const list=eventsFor(m);
-      return list.length?'<ul class="agenda-list">'+list.slice(0,3).map(e=>`<li><time>${e.allDay?'全天':stamp(e.startAt)}</time><div><b>${esc(e.title)}</b><span>${esc(e.location||'')}</span></div></li>`).join('')+'</ul>':empty(m.config.keyword?'暂无符合关注词的日程':'这段时间还没有安排');
+      return list.length?'<ul class="agenda-list">'+list.slice(0,3).map((e,index)=>`<li data-gesture-item="agenda:${m.id}:${index}"><time>${e.allDay?'全天':stamp(e.startAt)}</time><div><b>${esc(e.title)}</b><span>${esc(e.location||'')}</span></div></li>`).join('')+'</ul>':empty(m.config.keyword?'暂无符合关注词的日程':'这段时间还没有安排');
     }
-    if(m.type==='notes')return c.text?'<ul class="note-lines">'+c.text.split('\n').filter(Boolean).slice(0,5).map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul>':empty('记下今天想关注的人、事或灵感','写一条关注',m.id);
+    if(m.type==='notes')return c.text?'<ul class="note-lines">'+c.text.split('\n').filter(Boolean).slice(0,5).map((line,index)=>'<li data-gesture-item="notes:'+m.id+':'+index+'">'+esc(line)+'</li>').join('')+'</ul>':empty('记下今天想关注的人、事或灵感','写一条关注',m.id);
     if(m.type==='clock')return '<div class="world-time" data-zone="'+esc(c.zone)+'"></div><p class="world-date" data-date-zone="'+esc(c.zone)+'"></p><span class="zone-label">'+esc(c.zone)+'</span>';
     if(m.type==='countdown'){
       const now=new Date(),target=c.target==='weekend'?new Date():new Date(c.target+'T00:00:00+08:00');
@@ -39,7 +39,7 @@ export function createDashboard({api,setDialog,closeDialog,notify}) {
       const days=Math.max(0,Math.ceil((target-now)/86400000));
       return '<div class="countdown-number">'+days+'<span>天</span></div><p class="countdown-note">'+(c.target==='weekend'?(days?'距离本周六':'今天就是周末'):Date.parse(c.target+'T23:59:59+08:00')<+now?'目标日期已过':esc(c.target))+'</p>';
     }
-    if(m.type==='links')return c.links.length?'<div class="quick-links">'+c.links.map(l=>href(l,l.label)).join('')+'</div>':empty('把经常打开的网站放在这里','添加链接',m.id);
+    if(m.type==='links')return c.links.length?'<div class="quick-links">'+c.links.map((l,index)=>'<a href="'+esc(l.url)+'" title="'+esc(l.label)+'" target="_blank" rel="noopener noreferrer" data-gesture-item="links:'+m.id+':'+Math.floor(index/3)+'">'+esc(l.label)+'</a>').join('')+'</div>':empty('把经常打开的网站放在这里','添加链接',m.id);
     if(m.type==='project'){
       const existing=wall?.publicBrief.find(s=>s.repo===c.repo),items=d?.items?.length&&m.checkedAt>existing?.checkedAt?d.items:existing?[existing.item,...(existing.history||[])].filter(Boolean).filter((x,i,all)=>all.findIndex(y=>y.url===x.url)===i):d?.items;
       return items?.length?'<div class="project-focus"><span>'+esc(c.repo)+'</span><h3>'+href(items[0],items[0].tag||items[0].title)+'</h3><p>'+esc(items[0].url===existing?.item?.url?(existing.item.detailZh||existing.note):'查看最新发布说明')+'</p></div>':empty(m.loading?'正在检查 '+c.repo:'尚未读取到项目发布','更换项目',m.id);
@@ -53,11 +53,85 @@ export function createDashboard({api,setDialog,closeDialog,notify}) {
     if(m.type==='project')return '<span>GitHub Releases</span>';
     return '<span>'+esc({notes:'保存在本机',links:'你的常用入口',clock:clockZones[m.config.zone]||'当地时间',countdown:'按日历计算'}[m.type]||'')+'</span>';
   }
+  function pagesFor(m){
+    const c=m.config;
+    if(m.type==='news'){
+      const items=(m.data?.items||[]).filter(item=>matches(item.title,c.keyword));
+      return items.length?items.map(item=>({kind:'news',item})):[{kind:'empty'}];
+    }
+    if(m.type==='agenda'){
+      const list=eventsFor(m);
+      return list.length?list.map(event=>({kind:'agenda',event})):[{kind:'empty'}];
+    }
+    if(m.type==='notes'){
+      const lines=(c.text||'').split('\n').filter(Boolean);
+      return lines.length?lines.map(line=>({kind:'notes',line})):[{kind:'empty'}];
+    }
+    if(m.type==='links'){
+      const list=c.links||[];
+      if(!list.length)return [{kind:'empty'}];
+      const pages=[];
+      for(let i=0;i<list.length;i+=3)pages.push({kind:'links',items:list.slice(i,i+3)});
+      return pages;
+    }
+    return [{kind:'single',module:m}];
+  }
+  function pageHtml(page){
+    if(page.kind==='news'){
+      const item=page.item;
+      return '<h3 class="info-title">'+href(item)+'</h3><p class="info-meta">'+esc(stamp(item.publishedAt))+' · '+esc(data.newsSources[info.module.config.source]?.label||'')+'</p><a class="info-open" data-gesture-key="info:open:'+info.index+'" href="'+esc(item.url)+'" target="_blank" rel="noopener noreferrer">打开原文 ↗</a>';
+    }
+    if(page.kind==='agenda'){
+      const e=page.event;
+      return '<h3 class="info-title">'+esc(e.title)+'</h3><p class="info-meta">'+(e.allDay?'全天':esc(stamp(e.startAt))+' — '+esc(stamp(e.endAt)))+(e.location?' · '+esc(e.location):'')+'</p>';
+    }
+    if(page.kind==='notes')return '<p class="info-line">'+esc(page.line)+'</p>';
+    if(page.kind==='links')return '<ul class="info-links">'+page.items.map((l,i)=>'<li><a data-gesture-key="info:open:'+info.index+':'+i+'" href="'+esc(l.url)+'" target="_blank" rel="noopener noreferrer">'+esc(l.label)+'</a><span>'+esc(l.url)+'</span></li>').join('')+'</ul>';
+    if(page.kind==='single')return contents(page.module);
+    return '<p class="info-line">这一页还没有内容。</p>';
+  }
+  function infoHtml(){
+    const total=info.pages.length,end=total-1;
+    const dots=total<=12?'<div class="info-dots" aria-hidden="true">'+info.pages.map((_,i)=>'<i class="'+(i===info.index?'on':'')+'"></i>').join('')+'</div>':'';
+    const prev=total>1?'<button class="textbtn" type="button" data-info-prev data-gesture-key="info:prev:'+info.index+'"'+(info.index<=0?' disabled':'')+'>上一页</button>':'';
+    const next=total>1?'<button class="textbtn" type="button" data-info-next data-gesture-key="info:next:'+info.index+'"'+(info.index>=end?' disabled':'')+'>下一页</button>':'';
+    return '<div class="info-head"><h2 id="dialog-title">'+esc(info.module.title)+'</h2><span class="info-page">'+(info.index+1)+' / '+total+'</span></div><div class="info-body">'+pageHtml(info.pages[info.index])+'</div>'+dots+'<div class="info-nav">'+prev+'<div class="info-source">'+sourceLine(info.module)+'</div>'+next+'</div>';
+  }
+  function bind(){
+    const prev=$('dialog-body').querySelector('[data-info-prev]'),next=$('dialog-body').querySelector('[data-info-next]');
+    if(prev)prev.onclick=()=>flipPage(-1);
+    if(next)next.onclick=()=>flipPage(1);
+    $('dialog-body').querySelectorAll('[data-edit],[data-calendar]').forEach(b=>b.remove());
+    updateClocks();
+  }
+  function openInfo(moduleId,index=0){
+    const m=data?.modules.find(m=>m.id===moduleId);if(!m)return null;
+    const pages=pagesFor(m);
+    index=Math.max(0,Math.min(Math.trunc(index)||0,pages.length-1));
+    info={moduleId,index,pages,module:m,scope};
+    setDialog('info',infoHtml());
+    bind();
+    return {index,total:pages.length};
+  }
+  function flipPage(delta){
+    if(!info)return null;
+    const step=Number.isFinite(delta)?Math.trunc(delta):0;
+    const next=Math.max(0,Math.min(info.index+step,info.pages.length-1));
+    if(next!==info.index){info.index=next;setDialog('info',infoHtml());bind();}
+    return {index:info.index,total:info.pages.length};
+  }
+  function infoState(){
+    return info?{open:$('modal')?.open===true,moduleId:info.moduleId,index:info.index,total:info.pages.length}:null;
+  }
   function render(){
     const signature=JSON.stringify([scope,data,wall?.publicBrief,dateKey(new Date())]);if(signature===last)return;last=signature;
-    $('tiles').innerHTML=data.modules.map(m=>`<section class="widget module widget-${m.type}" data-module="${m.id}"><div class="widget-heading"><span class="type-dot ${m.type}" aria-hidden="true"></span><h2>${esc(m.title)}</h2><button class="module-config" data-edit="${m.id}" aria-label="设置${esc(m.title)}" title="设置此模块">···</button></div><div class="widget-body">${contents(m)}</div><div class="widget-source">${sourceLine(m)}</div>${m.error?'<div class="data-warning">'+(m.checkedAt?'缓存 '+esc(stamp(m.checkedAt))+' · 更新失败':'来源暂不可用')+'</div>':''}</section>`).join('');
+    $('tiles').innerHTML=data.modules.map(m=>`<section class="widget module widget-${m.type}" data-module="${m.id}" data-gesture-card="${esc(m.id)}"><div class="widget-heading"><span class="type-dot ${m.type}" aria-hidden="true"></span><h2>${esc(m.title)}</h2><button class="module-config" data-edit="${m.id}" aria-label="设置${esc(m.title)}" title="设置此模块">···</button></div><div class="widget-body">${contents(m)}</div><div class="widget-source">${sourceLine(m)}</div>${m.error?'<div class="data-warning">'+(m.checkedAt?'缓存 '+esc(stamp(m.checkedAt))+' · 更新失败':'来源暂不可用')+'</div>':''}</section>`).join('');
     $('tiles').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>edit(b.dataset.edit));
     $('tiles').querySelectorAll('[data-calendar]').forEach(b=>b.onclick=()=>calendar(b.dataset.calendar));
+    $('tiles').querySelectorAll('[data-gesture-card]').forEach(card=>card.addEventListener('click',event=>{
+      if(event.target.closest('a,button,input,select,textarea'))return;
+      openInfo(card.dataset.gestureCard,0);
+    }));
     void showAvatar(data.character);
     updateClocks();
   }
@@ -119,6 +193,16 @@ export function createDashboard({api,setDialog,closeDialog,notify}) {
     $('dialog-body').querySelectorAll('[data-delete-event]').forEach(b=>b.onclick=async()=>{try{await api('/api/modules/event',{scope:editingScope,action:'delete',id:b.dataset.deleteEvent});await refresh();calendar(id);}catch(err){$('calendar-msg').textContent=err.message;}});
   }
   $('modules-settings').onclick=manager;$('character-settings').onclick=character;
-  return {update(nextScope,nextWall,nextProfile){wall=nextWall;profile=nextProfile;if(nextScope!==scope){scope=nextScope;data=null;last='';pending=false;}if(!pending)void refresh();},refresh,manager};
+  $('modal').addEventListener('close',()=>{info=null;});
+  document.addEventListener('keydown',event=>{
+    if(!info)return;
+    const modal=$('modal');
+    if(!modal?.open||modal.dataset.kind!=='info')return;
+    if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
+      event.preventDefault();
+      flipPage(event.key==='ArrowLeft'?-1:1);
+    }
+  });
+  return {update(nextScope,nextWall,nextProfile){wall=nextWall;profile=nextProfile;if(nextScope!==scope){scope=nextScope;data=null;last='';pending=false;}if(!pending)void refresh();},refresh,manager,openInfo,flipPage,infoState};
 }
 

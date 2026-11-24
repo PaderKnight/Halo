@@ -170,7 +170,18 @@ export class Camera {
   }
   fail(message) { this.stop(); this.onError(message); }
 }
+export function templateSamples(id) {
+  return samples()[id] || [];
+}
+export async function analyzeImage(source, tuning = loadFaceTuning()) {
+  models ||= loadModels().catch(e => { models = null; throw e; });
+  const api = await models;
+  const options = new api.TinyFaceDetectorOptions({ inputSize: tuning.inputSize, scoreThreshold: tuning.detectScore });
+  const found = await api.detectAllFaces(source, options).withFaceLandmarks(true).withFaceDescriptors();
+  return found.map(item => ({ descriptor: Array.from(item.descriptor) }));
+}
+export const SAMPLE_MAX_DISTANCE = 0.48;
 export function addSample(list,face) {
-  if (!face || (list.length && list.some(other => distance(other,face)>0.48))) return [];
+  if (!face || (list.length && list.some(other => distance(other,face)>SAMPLE_MAX_DISTANCE))) return [];
   return [...list,face];
 }
