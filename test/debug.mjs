@@ -17,9 +17,10 @@ const profiles=[defaultProfile,{id:'u2',name:'小禾',repos:['vitejs/vite']}];
 const briefs=Object.fromEntries(profiles.map(p=>[p.id,makeBrief(p,feeds,day)]));
 fs.writeFileSync(path.join(dir,'wall.json'),JSON.stringify({profiles,feeds,briefs,lastRunAt:iso}));
 const port=process.env.DEBUG_TEST_PORT || '4333',url='http://127.0.0.1:'+port;
+const samplePhoto=fs.readFileSync(path.join(root,'node_modules/@vladmandic/face-api/demo/sample3.jpg')).toString('base64');
 const server=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,BRIEF_DATA:dir,PORT:port,BRIEF_OFFLINE:'1'},stdio:['ignore','pipe','pipe'],windowsHide:true});
 let browser;
-const fakeCamera = () => {
+const fakeCamera = face => {
   try { localStorage.setItem('morning.gesture.enabled','off'); } catch {}
   if (!navigator.mediaDevices) Object.defineProperty(navigator,'mediaDevices',{value:{},configurable:true});
   let calls=0;
@@ -28,7 +29,25 @@ const fakeCamera = () => {
     window.__granted=true;
     const canvas=document.createElement('canvas');
     canvas.width=640; canvas.height=480;
-    canvas.getContext('2d').fillStyle='#222'; canvas.getContext('2d').fillRect(0,0,640,480);
+    const context=canvas.getContext('2d');
+    let showFace=false, faceImage=null;
+    const paint=()=>{
+      context.fillStyle='#222'; context.fillRect(0,0,640,480);
+      if (showFace && faceImage) {
+        const width=faceImage.width*0.27, height=width*0.75;
+        context.drawImage(faceImage,faceImage.width*0.63-width/2,faceImage.height*0.26-height/2,width,height,0,0,640,480);
+      }
+    };
+    paint();
+    // 默认空白画面；进入网格阶段后再显示真实人脸，避免影响前面的「未检测到人脸」断言。
+    window.__showFace=on=>{showFace=!!on;paint();};
+    window.__faceReady=false;
+    if (face) {
+      const image=new Image();
+      image.src='data:image/jpeg;base64,'+face;
+      image.decode().then(()=>{faceImage=image;window.__faceReady=true;paint();}).catch(()=>{});
+    }
+    setInterval(paint,200);
     const stream=canvas.captureStream(5);
     window.__stream=stream;
     return stream;
@@ -50,7 +69,7 @@ try {
   const errors=[];page.on('pageerror',err=>errors.push(err.message));
   const requested=[];
   page.on('request',req=>{try{requested.push(new URL(req.url()).pathname);}catch{}});
-  await page.addInitScript(fakeCamera);
+  await page.addInitScript(fakeCamera,samplePhoto);
   const response=await page.goto(url+'/debug.html');
   assert.equal(response.status(),200,'debug page is served');
 
@@ -92,7 +111,6 @@ try {
   await page.waitForFunction(()=>document.querySelector('#sample-note').textContent.includes('已重置'));
 
   // 从照片批量录入：合影应跳过，不创建成员
-  const samplePhoto=fs.readFileSync(path.join(root,'node_modules/@vladmandic/face-api/demo/sample3.jpg')).toString('base64');
   await page.locator('#photo-input').setInputFiles({name:'合影.jpg',mimeType:'image/jpeg',buffer:Buffer.from(samplePhoto,'base64')});
   await page.waitForFunction(()=>document.querySelector('#photo-note').textContent.includes('检测到多张脸'),{},{timeout:120000});
   assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#enroll-list option')].some(option=>option.textContent.startsWith('合影'))),false);
@@ -177,9 +195,19 @@ try {
   assert.deepEqual(badErrors,[]);
   await bad.close();
 
-  // 网格引擎：请求模型、状态提示从「网格 —」变成「网格 N 张」
+  // 网格引擎：请求模型，用真实人脸确认检测到 1 张网格，且叠加层确实画出了像素
   assert.ok(requested.some(pathname => pathname === '/models/face_landmarker.task'), 'face landmarker model requested');
-  await page.waitForFunction(() => /网格 \d+ 张/.test(document.querySelector('#mesh-note')?.textContent || ''), null, { timeout: 120000 });
+  await page.waitForFunction(() => window.__faceReady === true, null, { timeout: 30000 });
+  await page.evaluate(() => window.__showFace(true));
+  await page.waitForFunction(() => /网格 1 张/.test(document.querySelector('#mesh-note')?.textContent || ''), null, { timeout: 120000 });
+  const painted = await page.evaluate(() => {
+    const canvas = document.querySelector('#overlay');
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    let lit = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) lit++;
+    return lit;
+  });
+  assert.ok(painted > 0, 'overlay draws non-transparent mesh pixels: ' + painted);
   await page.locator('#toggle').click();
   await page.waitForFunction(() => (document.querySelector('#mesh-note')?.textContent || '').includes('网格 —'));
   assert.deepEqual(errors, [], 'no page errors while starting and stopping the mesh');

@@ -737,6 +737,7 @@ function stopMesh() {
   meshConnections = [];
   meshFailed = false;
   meshNote.textContent = '网格 —';
+  overlay.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height);
 }
 
 function exportGestureFrame() {

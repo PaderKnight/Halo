@@ -9,7 +9,7 @@
 
 `/debug.html` 现在的人脸叠加层画的是 68 个关键点：青色人脸框 + 黄色实心小圆点。点阵看起来零散，用户希望换成**三角形组成的面具**。
 
-选用 MediaPipe `FaceLandmarker`（478 点，官方 2543 个三角形的 tessellation 连接表），而不是对现有 68 点做 Delaunay：68 点只能切出约 110 个大三角形，稀疏，达不到面具的密度。识别（face-api）链路完全不动，网格只做可视化。
+选用 MediaPipe `FaceLandmarker`（478 点，官方 `FACE_LANDMARKS_TESSELATION` 有 2,556 条 `Connection`，即 852 个首尾相接的闭合三角形），而不是对现有 68 点做 Delaunay：68 点只能切出约 110 个大三角形，稀疏，达不到面具的密度。识别（face-api）链路完全不动，网格只做可视化。注：运行时 `buildMeshTriangles` 由连接表反推三角面，可能额外得到最多两个眼部 clique，因此派生的填充三角形只是近似官方集合，并非精确相等。
 
 ## 2. 目标 / 非目标 / 反目标
 
